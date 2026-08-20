@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id           String        @id @default(cuid())
+  username     String
+  bio          String        @default("")
+  avatarColor  String        @default("#b026ff")
+  coins        Int           @default(0)
+  ownedSkins   String        @default("[\"neon_cyan\"]")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  gameSessions GameSession[]
+  highScores   HighScore[]
+  runSessions  RunSession[]
+  gameRuns     GameRun[]
+  dailyResults DailyResult[]
+  progression  PlayerProgression?
+}
+
+model RunSession {
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique
+  gameMode      String
+  challengeDate String?
+  startedAt     DateTime
+  expiresAt     DateTime
+  status        String    @default("active")
+  finishedAt    DateTime?
+  playerId      String?
+  player        Player?   @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  gameRun       GameRun?
+
+  @@index([playerId, startedAt])
+  @@index([status, expiresAt])
+}
+
+model GameRun {
+  id            String      @id @default(cuid())
+  runSessionId  String      @unique
+  runSession    RunSession  @relation(fields: [runSessionId], references: [id], onDelete: Cascade)
+  playerId      String
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  score         Int
+  level         Int
+  kills         Int         @default(0)
+  survivalTime Int         @default(0)
+  gameMode      String
+  wave          Int         @default(0)
+  damageDealt   Int         @default(0)
+  damageTaken   Int         @default(0)
+  criticalHits  Int         @default(0)
+  bossDefeated  Boolean     @default(false)
+  mutations    String      @default("[]")
+  challengeDate String?
+  createdAt     DateTime    @default(now())
+
+  @@index([playerId, createdAt])
+  @@index([gameMode, challengeDate, score])
+}
+
+model DailyResult {
+  id            String   @id @default(cuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  challengeDate String
+  score         Int
+  level         Int
+  kills         Int      @default(0)
+  survivalTime  Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([playerId, challengeDate])
+  @@index([challengeDate, score])
+}
+
+model PlayerProgression {
+  id        String   @id @default(cuid())
+  playerId  String   @unique
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  cellLevel Int      @default(1)
+  totalXp   Int      @default(0)
+  unlocks   String   @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
+model RateLimitBucket {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  count     Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+}
+
+model GameSession {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  score        Int
+  level        Int
+  kills        Int
+  survivalTime Int
+  gameMode     String   @default("classic")
+  wave         Int      @default(0)
+  damageDealt  Int      @default(0)
+  damageTaken  Int      @default(0)
+  criticalHits Int      @default(0)
+  bossDefeated Boolean  @default(false)
+  mutations    String   @default("[]")
+  challengeDate String?
+  createdAt    DateTime @default(now())
+
+  @@index([playerId, createdAt])
+}
+
+model HighScore {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  score        Int
+  level        Int
+  kills        Int      @default(0)
+  survivalTime Int
+  gameMode     String   @default("classic")
+  challengeDate String?
+  createdAt    DateTime @default(now())
+
+  @@index([score, createdAt])
+  @@index([gameMode, score])
+  @@index([gameMode, challengeDate, score])
+}
