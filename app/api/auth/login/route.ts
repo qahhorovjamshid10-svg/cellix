@@ -60,8 +60,9 @@ export async function POST(req: Request) {
     })
 
     return response
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = error as { message?: string }
     console.error('Login error:', error)
-    return NextResponse.json({ success: false, error: 'Serverda xatolik yuz berdi.' }, { status: 500 })
+    return NextResponse.json({ success: false, error: err?.message || 'Serverda xatolik yuz berdi.' }, { status: 500 })
   }
 }

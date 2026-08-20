@@ -30,62 +30,69 @@ export async function POST(req: Request) {
       )
     }
 
-    const existingUser = await prisma.player.findFirst({
+    const existingUsername = await prisma.player.findFirst({
       where: {
         OR: [
           { username },
-          { email },
+          { username: username.toLowerCase() },
         ],
       },
     })
 
-    if (existingUser) {
-      if (existingUser.email && existingUser.email.toLowerCase() === email.toLowerCase()) {
+    const existingEmail = await prisma.player.findFirst({
+      where: {
+        OR: [
+          { email },
+          { email: email.toLowerCase() },
+        ],
+      },
+    })
+
+    if (existingEmail && existingEmail.id !== existingUsername?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Bu elektron pochta bilan allaqachon hisob ochilgan.' },
+        { status: 409 }
+      )
+    }
+
+    if (existingUsername) {
+      if (existingUsername.passwordHash) {
         return NextResponse.json(
-          { success: false, error: 'Bu elektron pochta bilan allaqachon hisob ochilgan.' },
+          { success: false, error: 'Bu foydalanuvchi nomi allaqachon band.' },
           { status: 409 }
         )
       }
 
-      if (existingUser.username.toLowerCase() === username.toLowerCase()) {
-        if (existingUser.passwordHash) {
-          return NextResponse.json(
-            { success: false, error: 'Bu foydalanuvchi nomi allaqachon band.' },
-            { status: 409 }
-          )
-        }
+      // Upgrade existing unclaimed account (e.g. iflxczz)
+      const passwordHash = hashPassword(password)
+      const updated = await prisma.player.update({
+        where: { id: existingUsername.id },
+        data: {
+          email,
+          passwordHash,
+        },
+      })
 
-        // Upgrade existing unclaimed account (e.g. iflxczz)
-        const passwordHash = hashPassword(password)
-        const updated = await prisma.player.update({
-          where: { id: existingUser.id },
-          data: {
-            email,
-            passwordHash,
-          },
-        })
+      const response = NextResponse.json({
+        success: true,
+        player: {
+          id: updated.id,
+          username: updated.username,
+          email: updated.email,
+          coins: updated.coins,
+          avatarColor: updated.avatarColor,
+          ownedSkins: updated.ownedSkins,
+        },
+      })
 
-        const response = NextResponse.json({
-          success: true,
-          player: {
-            id: updated.id,
-            username: updated.username,
-            email: updated.email,
-            coins: updated.coins,
-            avatarColor: updated.avatarColor,
-            ownedSkins: updated.ownedSkins,
-          },
-        })
+      response.cookies.set('virus_player_id', updated.id, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: 'lax',
+        httpOnly: false,
+      })
 
-        response.cookies.set('virus_player_id', updated.id, {
-          path: '/',
-          maxAge: 60 * 60 * 24 * 365,
-          sameSite: 'lax',
-          httpOnly: false,
-        })
-
-        return response
-      }
+      return response
     }
 
     const passwordHash = hashPassword(password)
@@ -119,8 +126,18 @@ export async function POST(req: Request) {
     })
 
     return response
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string }
     console.error('Registration error:', error)
-    return NextResponse.json({ success: false, error: 'Serverda xatolik yuz berdi.' }, { status: 500 })
+    if (err?.code === 'P2002') {
+      return NextResponse.json(
+        { success: false, error: 'Bu foydalanuvchi nomi yoki elektron pochta allaqachon band.' },
+        { status: 409 }
+      )
+    }
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Serverda xatolik yuz berdi.' },
+      { status: 500 }
+    )
   }
 }
