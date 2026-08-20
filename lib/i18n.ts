@@ -138,6 +138,20 @@ export const translations = {
     daily: 'Daily Challenge',
     practice: 'Mashq',
     multiplayer: '2-Player',
+    
+    // Auth
+    authLogin: 'KIRISH',
+    authRegister: "RO'YXATDAN O'TISH",
+    authEmail: 'Elektron pochta',
+    authPassword: 'Parol',
+    authUsername: 'Foydalanuvchi nomi',
+    authLoginBtn: 'TIZIMGA KIRISH',
+    authRegisterBtn: 'HISOB YARATISH',
+    authNoAccount: "Hisobingiz yo'qmi?",
+    authHaveAccount: 'Hisobingiz bormi?',
+    authWelcome: 'CELLIX ARENASIGA XUSH KELIBSIZ',
+    authWelcomeDesc: 'Hisobingizga kiring yoki yangi hisob yarating',
+    authLogout: 'CHIQISH',
   },
   en: {
     // Branding
@@ -276,5 +290,19 @@ export const translations = {
     daily: 'Daily Challenge',
     practice: 'Practice',
     multiplayer: '2-Player',
+
+    // Auth
+    authLogin: 'LOGIN',
+    authRegister: 'SIGN UP',
+    authEmail: 'Email address',
+    authPassword: 'Password',
+    authUsername: 'Username',
+    authLoginBtn: 'SIGN IN',
+    authRegisterBtn: 'CREATE ACCOUNT',
+    authNoAccount: "Don't have an account?",
+    authHaveAccount: 'Already have an account?',
+    authWelcome: 'WELCOME TO CELLIX ARENA',
+    authWelcomeDesc: 'Sign in to your account or create a new one',
+    authLogout: 'LOG OUT',
   },
 }

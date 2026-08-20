@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useSyncExternalStore } from 'react'
-import { Hexagon, Trophy, User, Play, Menu, X, ShoppingBag } from 'lucide-react'
+import { Hexagon, Trophy, User, Play, Menu, X, ShoppingBag, LogIn } from 'lucide-react'
 import { useLanguage } from '@/components/LanguageContext'
 import CoinWallet from '@/components/CoinWallet'
 
@@ -103,12 +103,12 @@ export default function Navbar({ coinBalanceOverride }: { coinBalanceOverride?: 
             </Link>
           ) : (
             <Link
-              href="/profile/me"
+              href="/auth"
               onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900/60"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-emerald-400 border border-emerald-500/40 bg-emerald-950/30 hover:bg-emerald-500/20 hover:border-emerald-400 transition-all"
             >
-              <User className="h-3.5 w-3.5 text-emerald-400" />
-              <span>PROFILE</span>
+              <LogIn className="h-3.5 w-3.5" />
+              <span>{lang === 'uz' ? 'KIRISH' : 'LOGIN'}</span>
             </Link>
           )}
 

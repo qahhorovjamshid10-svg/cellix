@@ -41,11 +41,7 @@ export default function HubLandingPage() {
           {/* Hero Section */}
           <div className="text-center space-y-6 max-w-3xl mx-auto pt-2">
 
-            {/* System Live Status Pill */}
-            <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full border border-purple-500/40 bg-purple-950/50 backdrop-blur-md text-purple-300 text-xs font-mono font-bold tracking-widest uppercase shadow-[0_0_25px_rgba(176,38,255,0.3)] animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>{t('hubLive')}</span>
-            </div>
+
 
             {/* Glowing Holographic Title Header */}
             <div className="flex flex-col items-center justify-center space-y-2 relative">

@@ -9,9 +9,11 @@ datasource db {
 
 model Player {
   id           String        @id @default(cuid())
-  username     String
+  username     String        @unique
   bio          String        @default("")
   avatarColor  String        @default("#b026ff")
+  email        String?       @unique
+  passwordHash String?
   coins        Int           @default(0)
   ownedSkins   String        @default("[\"neon_cyan\"]")
   createdAt    DateTime      @default(now())
