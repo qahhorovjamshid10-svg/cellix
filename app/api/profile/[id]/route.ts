@@ -25,12 +25,7 @@ export async function GET(
         })
       }
       if (!player) {
-        player = await prisma.player.findFirst({
-          where: { username: 'iflxczz' },
-          include: {
-            highScores: { orderBy: { score: 'desc' }, take: 1 },
-          },
-        })
+        return NextResponse.json({ error: 'Avval tizimga kiring yoki ro‘yxatdan o‘ting.' }, { status: 401 })
       }
     } else {
       player = await prisma.player.findFirst({
@@ -50,17 +45,7 @@ export async function GET(
     }
 
     if (!player) {
-      // Fallback to iflxczz so creator profile is always available
-      player = await prisma.player.findFirst({
-        where: { username: 'iflxczz' },
-        include: {
-          highScores: { orderBy: { score: 'desc' }, take: 1 },
-        },
-      })
-    }
-
-    if (!player) {
-      return NextResponse.json({ error: 'Player not found.' }, { status: 404 })
+      return NextResponse.json({ error: 'O‘yinchi profili topilmadi.' }, { status: 404 })
     }
 
     // Calculate stats

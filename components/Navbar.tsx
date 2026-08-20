@@ -2,25 +2,26 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useSyncExternalStore } from 'react'
+import { useState, useEffect } from 'react'
 import { Hexagon, Trophy, User, Play, Menu, X, ShoppingBag, LogIn } from 'lucide-react'
 import { useLanguage } from '@/components/LanguageContext'
 import CoinWallet from '@/components/CoinWallet'
 
-function subscribeToPlayerCookie() {
-  return () => {}
-}
-
-function getPlayerIdFromCookie() {
-  if (typeof document === 'undefined') return null
-  return document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null
-}
-
 export default function Navbar({ coinBalanceOverride }: { coinBalanceOverride?: number }) {
   const pathname = usePathname()
   const { lang, setLang } = useLanguage()
-  const playerId = useSyncExternalStore(subscribeToPlayerCookie, getPlayerIdFromCookie, () => null)
+  const [playerId, setPlayerId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const checkCookie = () => {
+      const match = typeof document !== 'undefined' ? document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null : null
+      setPlayerId(match)
+    }
+    checkCookie()
+    const timer = setInterval(checkCookie, 1000)
+    return () => clearInterval(timer)
+  }, [pathname])
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-purple-500/20 bg-slate-950/80 backdrop-blur-md">

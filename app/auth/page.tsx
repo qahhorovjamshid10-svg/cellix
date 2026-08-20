@@ -39,14 +39,19 @@ export default function AuthPage() {
 
       const data = await res.json()
 
-      if (!res.ok) {
+      if (!res.ok || !data.success) {
         throw new Error(data.error || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
       }
 
-      // Success
-      window.location.href = '/profile/me'
+      // Set cookie client-side as well to guarantee instant sync
+      if (data.player?.id) {
+        document.cookie = `virus_player_id=${data.player.id}; path=/; max-age=31536000; SameSite=Lax`
+        window.location.href = `/profile/${data.player.id}`
+      } else {
+        window.location.href = '/profile/me'
+      }
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
     } finally {
       setLoading(false)
     }
@@ -56,7 +61,8 @@ export default function AuthPage() {
     uz: {
       login: 'KIRISH',
       register: "RO'YXATDAN O'TISH",
-      email: 'Elektron pochta',
+      loginField: 'Elektron pochta yoki Username',
+      registerEmail: 'Elektron pochta',
       password: 'Parol',
       username: 'Foydalanuvchi nomi',
       loginBtn: 'TIZIMGA KIRISH',
@@ -69,7 +75,8 @@ export default function AuthPage() {
     en: {
       login: 'LOGIN',
       register: 'SIGN UP',
-      email: 'Email address',
+      loginField: 'Email or Username',
+      registerEmail: 'Email address',
       password: 'Password',
       username: 'Username',
       loginBtn: 'SIGN IN',
@@ -158,18 +165,20 @@ export default function AuthPage() {
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t.email}</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  {mode === 'login' ? t.loginField : t.registerEmail}
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Mail className="h-5 w-5 text-slate-500" />
                   </div>
                   <input
-                    type="email"
+                    type={mode === 'login' ? 'text' : 'email'}
                     required
                     value={form.email}
-                    onChange={e => setForm({...form, email: e.target.value})}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
                     className="block w-full pl-10 pr-3 py-3 bg-[#040416] border border-slate-700 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
-                    placeholder="player@cellix.net"
+                    placeholder={mode === 'login' ? (isUz ? 'username yoki pochta...' : 'username or email...') : 'player@cellix.net'}
                   />
                 </div>
               </div>

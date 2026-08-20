@@ -6,7 +6,6 @@ export const translations = {
     brand: 'CELLIX',
     tagline: 'EVOLVE • MUTATE • DOMINATE',
     subtitle: '2D Harakatli Roguelite Arena',
-    hubLive: 'NEVRO TARMOQ FAOL • ARENA V1.2 ONLAYN',
     hubEnter: 'ARENAGA KIRISH',
     hubDescription: 'Tirik raqamli hujayra ichida jang qiling, mutatsiyaga uchrang va o‘z build’ingizni yarating.',
     
@@ -158,7 +157,6 @@ export const translations = {
     brand: 'CELLIX',
     tagline: 'EVOLVE • MUTATE • DOMINATE',
     subtitle: '2D Action Roguelite Arena',
-    hubLive: 'NEURAL LINK ACTIVE • ARENA V1.2 ONLINE',
     hubEnter: 'ENTER ARENA',
     hubDescription: 'Fight through a living digital cell, evolve through mutations, and build your own run.',
     

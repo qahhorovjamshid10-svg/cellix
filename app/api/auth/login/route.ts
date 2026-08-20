@@ -1,49 +1,67 @@
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { prisma } from '@/lib/prisma';
-import { verifyPassword } from '@/lib/auth';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { verifyPassword } from '@/lib/auth'
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+    const emailOrUsername = typeof body.email === 'string' ? body.email.trim() : ''
+    const password = typeof body.password === 'string' ? body.password : ''
 
-    if (!email || !password) {
-      return NextResponse.json({ success: false, error: 'Email and password are required' }, { status: 400 });
+    if (!emailOrUsername || !password) {
+      return NextResponse.json(
+        { success: false, error: 'Email/Username va parol kiritilishi shart.' },
+        { status: 400 }
+      )
     }
 
-    const player = await prisma.player.findUnique({
-      where: { email }
-    });
+    const player = await prisma.player.findFirst({
+      where: {
+        OR: [
+          { email: emailOrUsername.toLowerCase() },
+          { username: emailOrUsername },
+          { email: emailOrUsername },
+        ],
+      },
+    })
 
     if (!player || !player.passwordHash) {
-      return NextResponse.json({ success: false, error: 'Invalid email or password' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Bunday foydalanuvchi topilmadi yoki parol noto‘g‘ri.' },
+        { status: 401 }
+      )
     }
 
-    const isValid = verifyPassword(password, player.passwordHash);
-
+    const isValid = verifyPassword(password, player.passwordHash)
     if (!isValid) {
-      return NextResponse.json({ success: false, error: 'Invalid email or password' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Noto‘g‘ri parol kiritildi.' },
+        { status: 401 }
+      )
     }
 
-    const cookieStore = await cookies();
-    cookieStore.set('virus_player_id', player.id, {
-      path: '/',
-      maxAge: 365 * 24 * 60 * 60,
-      sameSite: 'lax',
-    });
-
-    return NextResponse.json({ 
-      success: true, 
-      player: { 
-        id: player.id, 
-        username: player.username, 
-        email: player.email, 
+    const response = NextResponse.json({
+      success: true,
+      player: {
+        id: player.id,
+        username: player.username,
+        email: player.email,
         coins: player.coins,
-        avatarColor: player.avatarColor
-      } 
-    });
+        avatarColor: player.avatarColor,
+        ownedSkins: player.ownedSkins,
+      },
+    })
+
+    response.cookies.set('virus_player_id', player.id, {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: 'lax',
+      httpOnly: false,
+    })
+
+    return response
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+    console.error('Login error:', error)
+    return NextResponse.json({ success: false, error: 'Serverda xatolik yuz berdi.' }, { status: 500 })
   }
 }

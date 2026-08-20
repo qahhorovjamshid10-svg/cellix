@@ -16,6 +16,7 @@ import {
   Gamepad2,
   Check,
   Coins,
+  LogOut,
 } from 'lucide-react'
 import { useLanguage } from '@/components/LanguageContext'
 import type { Achievement } from '@/lib/game/achievements'
@@ -85,29 +86,26 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     })
 
     let targetId = id
-    if (id === 'me') {
-      const match = document.cookie.match(/virus_player_id=([^;]+)/)
-      if (match) targetId = match[1]
-      else targetId = 'iflxczz' // Default fallback for creator
-    }
+    const ownerCookie = document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null
 
-    const ownerMatch = document.cookie.match(/virus_player_id=([^;]+)/)
+    if (id === 'me') {
+      if (ownerCookie) {
+        targetId = ownerCookie
+      } else {
+        window.location.href = '/auth'
+        return
+      }
+    }
 
     fetch(`/api/profile/${targetId}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data: ProfileResponse | { error?: string }) => {
         if (isProfileResponse(data)) {
-          const profileIsOwner =
-            ownerMatch?.[1] === data.player.id ||
-            id === 'me' ||
-            id.toLowerCase() === data.player.username.toLowerCase() ||
-            id === data.player.id
+          const profileIsOwner = !!ownerCookie && ownerCookie === data.player.id
 
           setIsOwner(profileIsOwner)
 
-          // Set cookie to establish ownership session
           if (profileIsOwner) {
-            document.cookie = `virus_player_id=${data.player.id}; path=/; max-age=31536000; SameSite=Lax`
             if (typeof data.player.coins === 'number') {
               syncCoinBalance(data.player.coins)
             }
@@ -219,6 +217,16 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {
+      // ignore
+    }
+    document.cookie = 'virus_player_id=; path=/; max-age=0'
+    window.location.href = '/'
+  }
+
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60)
     const rem = secs % 60
@@ -279,13 +287,22 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                 </div>
 
                 {isOwner && (
-                  <button
-                    onClick={() => setEditing(!editing)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-950/40 text-purple-300 hover:bg-purple-900/60 font-mono text-xs font-bold transition-colors self-center sm:self-auto cursor-pointer"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    <span>{editing ? 'BEKOR QILISH' : t('profileEdit')}</span>
-                  </button>
+                  <div className="flex items-center gap-2 self-center sm:self-auto">
+                    <button
+                      onClick={() => setEditing(!editing)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-950/40 text-purple-300 hover:bg-purple-900/60 font-mono text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span>{editing ? (isUz ? 'BEKOR QILISH' : 'CANCEL') : t('profileEdit')}</span>
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 font-mono text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      <span>{isUz ? 'CHIQISH' : 'LOG OUT'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
