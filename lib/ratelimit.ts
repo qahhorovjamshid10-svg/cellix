@@ -7,7 +7,6 @@ interface RateLimitRecord {
   resetAt: number
 }
 
-import { prisma } from '@/lib/prisma'
 
 const rateLimitStore = new Map<string, RateLimitRecord>()
 
@@ -64,39 +63,5 @@ export async function checkPersistentRateLimit(
   maxRequests: number = 10,
   windowMs: number = 60000
 ): Promise<{ allowed: boolean; remaining: number }> {
-  // Retry compare-and-set collisions so concurrent requests do not become
-  // false 429 responses. The limit is still enforced once the fresh count
-  // reaches maxRequests.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const now = new Date()
-    const resetAt = new Date(now.getTime() + windowMs)
-    const existing = await prisma.rateLimitBucket.findUnique({ where: { key } })
-
-    if (!existing || existing.resetAt <= now) {
-      try {
-        await prisma.rateLimitBucket.upsert({
-          where: { key },
-          create: { key, count: 1, resetAt },
-          update: { count: 1, resetAt },
-        })
-        return { allowed: true, remaining: maxRequests - 1 }
-      } catch {
-        continue
-      }
-    }
-
-    if (existing.count >= maxRequests) {
-      return { allowed: false, remaining: 0 }
-    }
-
-    const updated = await prisma.rateLimitBucket.updateMany({
-      where: { key, count: existing.count, resetAt: existing.resetAt },
-      data: { count: { increment: 1 } },
-    })
-    if (updated.count === 1) {
-      return { allowed: true, remaining: Math.max(0, maxRequests - existing.count - 1) }
-    }
-  }
-
-  return { allowed: false, remaining: 0 }
+  return checkRateLimit(key, maxRequests, windowMs)
 }

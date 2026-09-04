@@ -1552,7 +1552,6 @@ export default class BioWarScene extends Phaser.Scene {
       const survivalSec = Math.max(1, Math.floor((Date.now() - this.sessionStartTime) / 1000))
       const finalScore = Math.floor(this.peakMass * 2 + this.player.kills * 200 + survivalSec * 5)
       const virtualLevel = Math.min(30, Math.floor(this.peakMass / 50) + 1)
-      const coins = Math.min(100, Math.floor(finalScore / 500) * 10 + this.player.kills * 5 + 10)
       this.configCallbacks?.onGameOver?.({
         score: finalScore,
         level: virtualLevel,

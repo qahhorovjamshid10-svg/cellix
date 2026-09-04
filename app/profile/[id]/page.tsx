@@ -60,6 +60,7 @@ interface BioWarProfileStats {
 }
 
 interface ProfileResponse {
+  isOwner?: boolean
   player: ProfilePlayer
   stats: ProfileStats
   biowarStats?: BioWarProfileStats
@@ -93,21 +94,11 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       setOwnedSkinIds(getOwnedSkinIds())
     })
 
-    let targetId = id
-    const ownerCookie = document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null
-
-    if (id === 'me') {
-      if (!ownerCookie) {
-        window.location.href = '/auth'
-        return
-      }
-      targetId = 'me'
-    }
+    const targetId = id
 
     fetch(`/api/profile/${targetId}`, { cache: 'no-store' })
       .then((res) => {
         if (res.status === 401) {
-          document.cookie = 'virus_player_id=; path=/; max-age=0'
           window.location.href = '/auth'
           return null
         }
@@ -116,7 +107,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       .then((data: ProfileResponse | { error?: string } | null) => {
         if (!data) return
         if (isProfileResponse(data)) {
-          const profileIsOwner = !!ownerCookie && (ownerCookie === data.player.id || id === 'me')
+          const profileIsOwner = data.isOwner ?? false
 
           setIsOwner(profileIsOwner)
 
@@ -145,9 +136,6 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             avatarColor: data.player.avatarColor || '#b026ff',
           })
         } else {
-          if (id === 'me' || targetId === ownerCookie) {
-            document.cookie = 'virus_player_id=; path=/; max-age=0'
-          }
           setError(data.error || t('profileNotFound'))
         }
       })
@@ -241,7 +229,6 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     } catch {
       // ignore
     }
-    document.cookie = 'virus_player_id=; path=/; max-age=0'
     window.location.href = '/'
   }
 

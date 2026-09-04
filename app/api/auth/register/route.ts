@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { hashPassword } from '@/lib/auth'
+import { hashPassword, createSession } from '@/lib/auth'
 
 export async function POST(req: Request) {
   try {
@@ -85,12 +85,7 @@ export async function POST(req: Request) {
         },
       })
 
-      response.cookies.set('virus_player_id', updated.id, {
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365,
-        sameSite: 'lax',
-        httpOnly: false,
-      })
+      await createSession(updated.id, response)
 
       return response
     }
@@ -118,12 +113,7 @@ export async function POST(req: Request) {
       },
     })
 
-    response.cookies.set('virus_player_id', player.id, {
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365,
-      sameSite: 'lax',
-      httpOnly: false,
-    })
+    await createSession(player.id, response)
 
     return response
   } catch (error: unknown) {

@@ -72,7 +72,7 @@ export async function GET(req: Request) {
         survivalTime: b.survivalTime,
         gameMode: b.gameMode,
         challengeDate: null,
-        createdAt: new Date().toISOString() as any,
+        createdAt: new Date(),
         playerId: b.id,
         player: {
           id: b.id,

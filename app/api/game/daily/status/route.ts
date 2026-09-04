@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { getTodayDateString, getDailyChallengeModifier } from '@/lib/game/daily'
+import { getAuthenticatedPlayer } from '@/lib/auth'
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const playerId = cookieStore.get('virus_player_id')?.value
+    const player = await getAuthenticatedPlayer()
     const challengeDate = getTodayDateString()
 
     // Calculate milliseconds until next midnight (00:00:00)
@@ -17,7 +16,7 @@ export async function GET() {
 
     const dailyMod = getDailyChallengeModifier(challengeDate)
 
-    if (!playerId) {
+    if (!player) {
       return NextResponse.json({
         playedToday: false,
         remainingMs,
@@ -30,7 +29,7 @@ export async function GET() {
     const dailyResult = await prisma.dailyResult.findUnique({
       where: {
         playerId_challengeDate: {
-          playerId,
+          playerId: player.id,
           challengeDate,
         },
       },

@@ -38,8 +38,29 @@ interface DailyStatusData {
 
 export default function PlayGamePage() {
   const [selectedMode, setSelectedMode] = useState<'classic' | 'survival' | 'daily' | 'biowar' | null>(null)
-  const [dailyStatus, setDailyStatus] = useState<DailyStatusData | null>(null)
-  const [countdownMs, setCountdownMs] = useState<number>(0)
+  const [dailyStatus, setDailyStatus] = useState<DailyStatusData | null>(() => {
+    if (typeof window === 'undefined') return null
+    const today = getTodayDateString()
+    const locallyPlayed = localStorage.getItem(`cellix_daily_played_${today}`) === 'true'
+    if (locallyPlayed) {
+      const now = new Date()
+      const midnight = new Date(now)
+      midnight.setHours(24, 0, 0, 0)
+      return {
+        playedToday: true,
+        remainingMs: Math.max(0, midnight.getTime() - now.getTime()),
+        result: null,
+      }
+    }
+    return null
+  })
+  const [countdownMs, setCountdownMs] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0
+    const now = new Date()
+    const midnight = new Date(now)
+    midnight.setHours(24, 0, 0, 0)
+    return Math.max(0, midnight.getTime() - now.getTime())
+  })
   const [showDailyBlockedModal, setShowDailyBlockedModal] = useState<boolean>(false)
 
   const { lang, t } = useLanguage()
@@ -57,31 +78,21 @@ export default function PlayGamePage() {
 
   // Fetch daily challenge status and calculate remaining time to midnight
   useEffect(() => {
-    const now = new Date()
-    const midnight = new Date(now)
-    midnight.setHours(24, 0, 0, 0)
-    const initialRemaining = Math.max(0, midnight.getTime() - now.getTime())
-    setCountdownMs(initialRemaining)
-
     const today = getTodayDateString()
     const locallyPlayed = typeof window !== 'undefined' && localStorage.getItem(`cellix_daily_played_${today}`) === 'true'
-
-    if (locallyPlayed) {
-      setDailyStatus({
-        playedToday: true,
-        remainingMs: initialRemaining,
-        result: null,
-      })
-    }
 
     fetch('/api/game/daily/status')
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.playedToday === 'boolean') {
+          const now = new Date()
+          const midnight = new Date(now)
+          midnight.setHours(24, 0, 0, 0)
+          const fallbackRemaining = Math.max(0, midnight.getTime() - now.getTime())
           const isPlayed = data.playedToday || locallyPlayed
           setDailyStatus({
             playedToday: isPlayed,
-            remainingMs: data.remainingMs ?? initialRemaining,
+            remainingMs: data.remainingMs ?? fallbackRemaining,
             result: data.result,
           })
           if (typeof data.remainingMs === 'number') {

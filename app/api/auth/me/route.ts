@@ -1,22 +1,12 @@
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server'
+import { getAuthenticatedPlayer } from '@/lib/auth'
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const playerId = cookieStore.get('virus_player_id')?.value;
-
-  if (!playerId) {
-    return NextResponse.json({ authenticated: false });
-  }
-
   try {
-    const player = await prisma.player.findUnique({
-      where: { id: playerId }
-    });
+    const player = await getAuthenticatedPlayer()
 
     if (!player) {
-      return NextResponse.json({ authenticated: false });
+      return NextResponse.json({ authenticated: false })
     }
 
     return NextResponse.json({
@@ -26,11 +16,13 @@ export async function GET() {
         username: player.username,
         email: player.email,
         coins: player.coins,
-        avatarColor: player.avatarColor
-      }
-    });
+        avatarColor: player.avatarColor,
+        ownedSkins: player.ownedSkins,
+      },
+    })
   } catch (error) {
-    console.error('Auth check error:', error);
-    return NextResponse.json({ authenticated: false });
+    console.error('Auth check error:', error)
+    return NextResponse.json({ error: 'Service Unavailable' }, { status: 503 })
   }
 }
+

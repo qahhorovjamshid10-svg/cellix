@@ -24,6 +24,8 @@ model Player {
   gameRuns     GameRun[]
   dailyResults DailyResult[]
   progression  PlayerProgression?
+  sessions     Session[]
+  payments     PaymentTransaction[]
 }
 
 model RunSession {
@@ -136,4 +138,36 @@ model HighScore {
   @@index([score, createdAt])
   @@index([gameMode, score])
   @@index([gameMode, challengeDate, score])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  playerId   String
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([expiresAt])
+}
+
+model PaymentTransaction {
+  id             String   @id @default(cuid())
+  transactionId  String   @unique
+  playerId       String
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  coins          Int
+  amountCents    Int
+  currency       String   @default("USD")
+  status         String   @default("pending") // pending, completed, failed
+  provider       String   @default("placeholder") // stripe, click, payme
+  idempotencyKey String?  @unique
+  metadata       String   @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([status])
 }

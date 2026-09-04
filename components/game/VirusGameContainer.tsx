@@ -170,14 +170,15 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
     checkOrientation()
     window.addEventListener('resize', checkOrientation)
     window.addEventListener('orientationchange', checkOrientation)
-    const orientationObj = (window.screen as any)?.orientation
+    type OrientationWithLock = ScreenOrientation & { lock?: (orientation: string) => Promise<void> }
+    const orientationObj = window.screen?.orientation as OrientationWithLock | undefined
     if (orientationObj && 'addEventListener' in orientationObj) {
       orientationObj.addEventListener('change', checkOrientation)
     }
 
     // Attempt to lock landscape orientation on mobile devices
     try {
-      if (orientationObj && 'lock' in orientationObj) {
+      if (orientationObj && typeof orientationObj.lock === 'function') {
         void orientationObj.lock('landscape').catch(() => {})
       }
     } catch {}
@@ -198,8 +199,9 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
       }
     } catch {}
     try {
-      const orientationObj = (window.screen as any)?.orientation
-      if (orientationObj && 'lock' in orientationObj) {
+      type OrientationWithLock = ScreenOrientation & { lock?: (orientation: string) => Promise<void> }
+      const orientationObj = window.screen?.orientation as OrientationWithLock | undefined
+      if (orientationObj && typeof orientationObj.lock === 'function') {
         await orientationObj.lock('landscape')
       }
     } catch {}
@@ -676,13 +678,13 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
               {/* RMB: Heavy Shot */}
               <div className="glass-panel px-3 py-1.5 rounded-xl border border-rose-500/30 bg-slate-950/80 font-mono text-xs flex items-center gap-2 text-slate-300">
                 <span className="text-[10px] text-rose-400 font-bold">[RMB]</span>
-                <span>KUCHLI O'Q <span className="text-[10px] text-rose-400/80">(3X ZARAR)</span></span>
+                <span>KUCHLI O&apos;Q <span className="text-[10px] text-rose-400/80">(3X ZARAR)</span></span>
               </div>
 
               {/* Arrow Keys Shoot */}
               <div className="glass-panel px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-950/80 font-mono text-xs flex items-center gap-1.5 text-slate-400">
                 <span className="text-[10px] text-purple-400 font-bold">[↑↓←→]</span>
-                <span>YO'NALISH BO'YICHA OTISH</span>
+                <span>YO&apos;NALISH BO&apos;YICHA OTISH</span>
               </div>
             </div>
 

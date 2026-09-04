@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
-import { cookies } from 'next/headers'
+import { getAuthenticatedPlayer, SAFE_PLAYER_SELECT } from '@/lib/auth'
 
 export async function PUT(req: Request) {
   try {
-    const cookieStore = await cookies()
-    const playerId = cookieStore.get('virus_player_id')?.value
+    const authPlayer = await getAuthenticatedPlayer()
 
-    if (!playerId) {
+    if (!authPlayer) {
       return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 })
     }
 
@@ -30,14 +29,16 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 })
     }
 
-    const player = await prisma.player.update({
-      where: { id: playerId },
+    const updatedPlayer = await prisma.player.update({
+      where: { id: authPlayer.id },
       data: updateData,
+      select: SAFE_PLAYER_SELECT,
     })
 
-    return NextResponse.json({ success: true, player })
+    return NextResponse.json({ success: true, player: updatedPlayer })
   } catch (error) {
     console.error('Error updating profile:', error)
     return NextResponse.json({ error: 'Failed to update profile.' }, { status: 500 })
   }
 }
+

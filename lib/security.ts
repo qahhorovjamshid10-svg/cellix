@@ -6,8 +6,27 @@ import crypto from 'crypto'
 
 export const SESSION_TTL_MS = 30 * 60 * 1000
 
-function getSecretKey(): string {
-  return process.env.SESSION_SECRET || 'cellix_v2_secure_game_session_key_2026_prod'
+/**
+ * Resolves the server-side HMAC signing secret.
+ *
+ * SECURITY REQUIREMENT:
+ * This secret CANNOT have any default or hardcoded fallback. If a fallback were
+ * allowed, an attacker could forge game run session tokens by using the known
+ * default key, allowing them to submit arbitrary cheated scores or tamper with runs.
+ *
+ * The secret must be explicitly provided via the SESSION_SECRET environment variable
+ * and must be at least 32 characters long to provide adequate cryptographic entropy.
+ */
+export function getSecretKey(): string {
+  const secret = process.env.SESSION_SECRET
+  if (!secret || typeof secret !== 'string' || secret.trim().length < 32) {
+    throw new Error(
+      'FATAL SECURITY CONFIGURATION ERROR: The SESSION_SECRET environment variable is missing, empty, or shorter than 32 characters. ' +
+      'A cryptographically strong secret must be configured in environment variables to prevent run token forgery. ' +
+      'Hardcoded fallbacks are strictly prohibited.'
+    )
+  }
+  return secret.trim()
 }
 
 export interface SessionData {
@@ -53,7 +72,9 @@ export function verifySessionToken(token: string): SessionData | null {
       .update(payload)
       .digest('hex')
 
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+    const sigBuf = Buffer.from(signature)
+    const expectedBuf = Buffer.from(expectedSignature)
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       return null
     }
 

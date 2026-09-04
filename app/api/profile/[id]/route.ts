@@ -1,7 +1,7 @@
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { evaluateAchievements } from '@/lib/game/achievements'
+import { getAuthenticatedPlayer } from '@/lib/auth'
 
 export async function GET(
   req: Request,
@@ -9,21 +9,19 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const authenticatedPlayer = await getAuthenticatedPlayer()
     let player = null
 
     if (id === 'me') {
-      const cookieStore = await cookies()
-      const cookiePlayerId = cookieStore.get('virus_player_id')?.value
-      if (cookiePlayerId) {
-        player = await prisma.player.findFirst({
-          where: {
-            OR: [{ id: cookiePlayerId }, { username: cookiePlayerId }],
-          },
-          include: {
-            highScores: { orderBy: { score: 'desc' }, take: 1 },
-          },
-        })
+      if (!authenticatedPlayer) {
+        return NextResponse.json({ error: 'Avval tizimga kiring yoki ro‘yxatdan o‘ting.' }, { status: 401 })
       }
+      player = await prisma.player.findUnique({
+        where: { id: authenticatedPlayer.id },
+        include: {
+          highScores: { orderBy: { score: 'desc' }, take: 1 },
+        },
+      })
       if (!player) {
         return NextResponse.json({ error: 'Avval tizimga kiring yoki ro‘yxatdan o‘ting.' }, { status: 401 })
       }
@@ -88,7 +86,10 @@ export async function GET(
     const biowarTotalKills = biowarSessions.reduce((sum, s) => sum + s.kills, 0)
     const biowarMaxSurvival = biowarSessions.length > 0 ? Math.max(...biowarSessions.map((s) => s.survivalTime)) : 0
 
+    const isOwner = Boolean(authenticatedPlayer && authenticatedPlayer.id === player.id)
+
     return NextResponse.json({
+      isOwner,
       player: {
         id: player.id,
         username: player.username,

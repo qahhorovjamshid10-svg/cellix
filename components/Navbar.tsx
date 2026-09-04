@@ -15,22 +15,16 @@ export default function Navbar({ coinBalanceOverride }: { coinBalanceOverride?: 
 
   useEffect(() => {
     const checkAuth = () => {
-      const match = typeof document !== 'undefined' ? document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null : null
-      if (!match) {
-        setPlayerId(null)
-        return
-      }
       fetch('/api/auth/me', { cache: 'no-store' })
         .then((res) => res.json())
         .then((data) => {
-          if (!data?.authenticated) {
-            document.cookie = 'virus_player_id=; path=/; max-age=0'
-            setPlayerId(null)
+          if (data?.authenticated && data.player?.id) {
+            setPlayerId(data.player.id)
           } else {
-            setPlayerId(data.player?.id ?? match)
+            setPlayerId(null)
           }
         })
-        .catch(() => setPlayerId(match))
+        .catch(() => {})
     }
     checkAuth()
   }, [pathname])

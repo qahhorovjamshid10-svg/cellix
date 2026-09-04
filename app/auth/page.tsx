@@ -43,15 +43,15 @@ export default function AuthPage() {
         throw new Error(data.error || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
       }
 
-      // Set cookie client-side as well to guarantee instant sync
       if (data.player?.id) {
-        document.cookie = `virus_player_id=${data.player.id}; path=/; max-age=31536000; SameSite=Lax`
-        window.location.href = `/profile/${data.player.id}`
+        router.push(`/profile/${data.player.id}`)
       } else {
-        window.location.href = '/profile/me'
+        router.push('/profile/me')
       }
-    } catch (err: any) {
-      setError(err.message || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
+      router.refresh()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : null
+      setError(message || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
     } finally {
       setLoading(false)
     }

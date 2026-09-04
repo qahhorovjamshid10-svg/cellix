@@ -1,6 +1,5 @@
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getAuthenticatedPlayer } from '@/lib/auth'
 
 const DEFAULT_SKINS = ['neon_cyan']
 
@@ -16,30 +15,7 @@ function parseOwnedSkins(value: string): string[] {
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    let playerId = cookieStore.get('virus_player_id')?.value
-
-    if (!playerId) {
-      const creator = await prisma.player.findFirst({
-        where: { username: 'iflxczz' },
-        select: { id: true, coins: true, ownedSkins: true },
-      })
-      if (creator) {
-        return NextResponse.json({
-          authenticated: true,
-          coins: creator.coins,
-          ownedSkins: parseOwnedSkins(creator.ownedSkins),
-        })
-      }
-      return NextResponse.json({ authenticated: false, coins: 0, ownedSkins: DEFAULT_SKINS })
-    }
-
-    const player = await prisma.player.findFirst({
-      where: {
-        OR: [{ id: playerId }, { username: playerId }],
-      },
-      select: { coins: true, ownedSkins: true },
-    })
+    const player = await getAuthenticatedPlayer()
 
     if (!player) {
       return NextResponse.json({ authenticated: false, coins: 0, ownedSkins: DEFAULT_SKINS })
@@ -55,3 +31,4 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch economy profile.' }, { status: 500 })
   }
 }
+

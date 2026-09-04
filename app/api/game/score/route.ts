@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { cookies } from 'next/headers'
 import { checkPersistentRateLimit, getRequestRateLimitKey } from '@/lib/ratelimit'
 import {
   hashSessionToken,
@@ -10,6 +9,7 @@ import {
 } from '@/lib/security'
 import { getCellLevelForXp, getRunProgressionXp } from '@/lib/game/progression'
 import { calculateRunCoinReward } from '@/lib/game/cosmetics'
+import { getAuthenticatedPlayer } from '@/lib/auth'
 
 const GAME_MODES = ['classic', 'survival', 'daily', 'biowar'] as const
 type GameMode = (typeof GAME_MODES)[number]
@@ -29,10 +29,8 @@ function readBoundedInteger(
 
 export async function POST(req: Request) {
   try {
-    // Rate limit check (max 10 submissions per IP per 5 minutes)
-    const cookieHeader = req.headers.get('cookie') || ''
-    const playerCookie = cookieHeader.match(/(?:^|;\s*)virus_player_id=([^;]+)/)?.[1]
-    const subject = playerCookie || req.headers.get('user-agent') || 'anonymous'
+    const authenticatedPlayer = await getAuthenticatedPlayer()
+    const subject = authenticatedPlayer?.id || req.headers.get('user-agent') || 'anonymous'
     const rateCheck = await checkPersistentRateLimit(getRequestRateLimitKey(req, 'score_submit', subject), 10, 300000)
     if (!rateCheck.allowed) {
       return NextResponse.json({ error: 'Too many score submissions. Please wait.' }, { status: 429 })
@@ -140,25 +138,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Anti-cheat rejection: ${validation.reason}` }, { status: 400 })
     }
 
-    const cookieStore = await cookies()
-    const playerId = cookieStore.get('virus_player_id')?.value
-    let player
-
-    if (playerId) {
-      player = await prisma.player.findUnique({ where: { id: playerId } })
+    if (!authenticatedPlayer) {
+      return NextResponse.json({ error: 'Authentication required to submit score.' }, { status: 401 })
     }
 
-    if (!player) {
-      // Create unique guest player so unique constraint on username never fails
-      const suffix = Math.random().toString(36).substring(2, 7)
-      player = await prisma.player.create({
-        data: {
-          username: `Guest_${suffix}`,
-          bio: 'CELLIX Arena Guest',
-          coins: 0,
-        },
-      })
+    if (!runSession.playerId || runSession.playerId !== authenticatedPlayer.id) {
+      return NextResponse.json(
+        { error: 'Forbidden: Run session does not belong to the authenticated player.' },
+        { status: 403 }
+      )
     }
+
+    const player = authenticatedPlayer
 
     const challengeDate = normalizedGameMode === 'daily' ? runSession.challengeDate : null
     const rewardXp = getRunProgressionXp({
@@ -172,115 +163,21 @@ export async function POST(req: Request) {
       survivalTime: normalizedSurvivalTime,
       gameMode: normalizedGameMode,
     })
-    const result = await prisma.$transaction(async (tx) => {
-      const claimed = await tx.runSession.updateMany({
-        where: { id: runSession.id, status: 'active' },
-        data: {
-          status: 'finished',
-          finishedAt: new Date(),
-          playerId: player.id,
-        },
-      })
-      if (claimed.count !== 1) {
-        throw new Error('RUN_ALREADY_FINISHED')
-      }
-
-      const session = await tx.gameSession.create({
-        data: {
-          playerId: player.id,
-          score: Math.floor(score),
-          level: normalizedLevel,
-          kills: normalizedKills,
-          survivalTime: normalizedSurvivalTime,
-          gameMode: normalizedGameMode,
-          wave: normalizedWave,
-          damageDealt: normalizedDamageDealt,
-          damageTaken: normalizedDamageTaken,
-          criticalHits: normalizedCriticalHits,
-          bossDefeated: bossDefeated === true,
-          mutations: JSON.stringify(Array.isArray(mutations) ? mutations : []),
-          challengeDate,
-        },
-      })
-
-      await tx.gameRun.create({
-        data: {
-          runSessionId: runSession.id,
-          playerId: player.id,
-          score: Math.floor(score),
-          level: normalizedLevel,
-          kills: normalizedKills,
-          survivalTime: normalizedSurvivalTime,
-          gameMode: normalizedGameMode,
-          wave: normalizedWave,
-          damageDealt: normalizedDamageDealt,
-          damageTaken: normalizedDamageTaken,
-          criticalHits: normalizedCriticalHits,
-          bossDefeated: bossDefeated === true,
-          mutations: JSON.stringify(Array.isArray(mutations) ? mutations : []),
-          challengeDate,
-        },
-      })
-
-      const existingProgression = await tx.playerProgression.findUnique({ where: { playerId: player.id } })
-      const totalXp = (existingProgression?.totalXp ?? 0) + rewardXp
-      const progression = await tx.playerProgression.upsert({
-        where: { playerId: player.id },
-        create: { playerId: player.id, totalXp, cellLevel: getCellLevelForXp(totalXp) },
-        update: { totalXp, cellLevel: getCellLevelForXp(totalXp) },
-      })
-
-      if (normalizedGameMode === 'daily' && challengeDate) {
-        const existingDaily = await tx.dailyResult.findUnique({
-          where: {
-            playerId_challengeDate: {
-              playerId: player.id,
-              challengeDate,
-            },
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const claimed = await tx.runSession.updateMany({
+          where: { id: runSession.id, status: 'active' },
+          data: {
+            status: 'finished',
+            finishedAt: new Date(),
+            playerId: player.id,
           },
         })
-
-        if (!existingDaily) {
-          await tx.dailyResult.create({
-            data: {
-              playerId: player.id,
-              challengeDate,
-              score: Math.floor(score),
-              level: normalizedLevel,
-              kills: normalizedKills,
-              survivalTime: normalizedSurvivalTime,
-            },
-          })
-        } else if (Math.floor(score) > existingDaily.score) {
-          await tx.dailyResult.update({
-            where: { id: existingDaily.id },
-            data: {
-              score: Math.floor(score),
-              level: normalizedLevel,
-              kills: normalizedKills,
-              survivalTime: normalizedSurvivalTime,
-            },
-          })
+        if (claimed.count !== 1) {
+          throw new Error('RUN_ALREADY_FINISHED')
         }
-      }
 
-      const updatedPlayer = await tx.player.update({
-        where: { id: player.id },
-        data: { coins: { increment: coinReward } },
-        select: { coins: true },
-      })
-
-      const existingHighScore = await tx.highScore.findFirst({
-        where: { playerId: player.id, gameMode: normalizedGameMode, challengeDate },
-        orderBy: { score: 'desc' },
-      })
-
-      let isNewRecord = false
-      if (!existingHighScore || Math.floor(score) > existingHighScore.score) {
-        await tx.highScore.deleteMany({
-          where: { playerId: player.id, gameMode: normalizedGameMode, challengeDate },
-        })
-        await tx.highScore.create({
+        const session = await tx.gameSession.create({
           data: {
             playerId: player.id,
             score: Math.floor(score),
@@ -288,32 +185,131 @@ export async function POST(req: Request) {
             kills: normalizedKills,
             survivalTime: normalizedSurvivalTime,
             gameMode: normalizedGameMode,
+            wave: normalizedWave,
+            damageDealt: normalizedDamageDealt,
+            damageTaken: normalizedDamageTaken,
+            criticalHits: normalizedCriticalHits,
+            bossDefeated: bossDefeated === true,
+            mutations: JSON.stringify(Array.isArray(mutations) ? mutations : []),
             challengeDate,
           },
         })
-        isNewRecord = true
+
+        await tx.gameRun.create({
+          data: {
+            runSessionId: runSession.id,
+            playerId: player.id,
+            score: Math.floor(score),
+            level: normalizedLevel,
+            kills: normalizedKills,
+            survivalTime: normalizedSurvivalTime,
+            gameMode: normalizedGameMode,
+            wave: normalizedWave,
+            damageDealt: normalizedDamageDealt,
+            damageTaken: normalizedDamageTaken,
+            criticalHits: normalizedCriticalHits,
+            bossDefeated: bossDefeated === true,
+            mutations: JSON.stringify(Array.isArray(mutations) ? mutations : []),
+            challengeDate,
+          },
+        })
+
+        const existingProgression = await tx.playerProgression.findUnique({ where: { playerId: player.id } })
+        const totalXp = (existingProgression?.totalXp ?? 0) + rewardXp
+        const progression = await tx.playerProgression.upsert({
+          where: { playerId: player.id },
+          create: { playerId: player.id, totalXp, cellLevel: getCellLevelForXp(totalXp) },
+          update: { totalXp, cellLevel: getCellLevelForXp(totalXp) },
+        })
+
+        if (normalizedGameMode === 'daily' && challengeDate) {
+          await tx.dailyResult.upsert({
+            where: {
+              playerId_challengeDate: {
+                playerId: player.id,
+                challengeDate,
+              },
+            },
+            create: {
+              playerId: player.id,
+              challengeDate,
+              score: Math.floor(score),
+              level: normalizedLevel,
+              kills: normalizedKills,
+              survivalTime: normalizedSurvivalTime,
+            },
+            update: {
+              score: Math.floor(score),
+              level: normalizedLevel,
+              kills: normalizedKills,
+              survivalTime: normalizedSurvivalTime,
+            },
+          })
+        }
+
+        const updatedPlayer = await tx.player.update({
+          where: { id: player.id },
+          data: { coins: { increment: coinReward } },
+          select: { coins: true },
+        })
+
+        const existingHighScore = await tx.highScore.findFirst({
+          where: { playerId: player.id, gameMode: normalizedGameMode, challengeDate },
+          orderBy: { score: 'desc' },
+        })
+
+        let isNewRecord = false
+        if (!existingHighScore) {
+          await tx.highScore.create({
+            data: {
+              playerId: player.id,
+              score: Math.floor(score),
+              level: normalizedLevel,
+              kills: normalizedKills,
+              survivalTime: normalizedSurvivalTime,
+              gameMode: normalizedGameMode,
+              challengeDate,
+            },
+          })
+          isNewRecord = true
+        } else if (Math.floor(score) > existingHighScore.score) {
+          await tx.highScore.update({
+            where: { id: existingHighScore.id },
+            data: {
+              score: Math.floor(score),
+              level: normalizedLevel,
+              kills: normalizedKills,
+              survivalTime: normalizedSurvivalTime,
+            },
+          })
+          isNewRecord = true
+        }
+
+        return { session, isNewRecord, progression, coinBalance: updatedPlayer.coins }
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
       }
+    )
 
-      return { session, isNewRecord, progression, coinBalance: updatedPlayer.coins }
-    })
-
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       session: result.session,
       isNewRecord: result.isNewRecord,
       progression: result.progression,
       coinReward,
       coinBalance: result.coinBalance,
-      player: { ...player, coins: result.coinBalance },
+      player: {
+        id: player.id,
+        username: player.username,
+        bio: player.bio,
+        avatarColor: player.avatarColor,
+        coins: result.coinBalance,
+        ownedSkins: player.ownedSkins,
+        createdAt: player.createdAt,
+      },
     })
-
-    response.cookies.set('virus_player_id', player.id, {
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365,
-      sameSite: 'lax',
-    })
-
-    return response
   } catch (error) {
     if (error instanceof Error && error.message === 'RUN_ALREADY_FINISHED') {
       return NextResponse.json({ error: 'Run has already been finished.' }, { status: 409 })
