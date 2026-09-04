@@ -26,29 +26,93 @@ export async function POST(req: Request) {
 
     const { token, startTime } = generateSessionToken(gameMode)
     const challenge = gameMode === 'daily' ? getDailyChallenge() : undefined
+    const challengeDate = challenge?.date
     const expiresAt = new Date(startTime + SESSION_TTL_MS)
-    const player = playerId
-      ? await prisma.player.findUnique({ where: { id: playerId }, select: { id: true } })
-      : null
+
+    let activePlayerId = playerId
+    let createdGuestId: string | null = null
+
+    if (playerId) {
+      const existingPlayer = await prisma.player.findUnique({
+        where: { id: playerId },
+        select: { id: true },
+      })
+      if (existingPlayer) {
+        activePlayerId = existingPlayer.id
+      } else {
+        activePlayerId = undefined
+      }
+    }
+
+    if (!activePlayerId) {
+      const suffix = Math.random().toString(36).substring(2, 7)
+      const guest = await prisma.player.create({
+        data: {
+          username: `Guest_${suffix}`,
+          bio: 'CELLIX Arena Guest',
+          coins: 0,
+        },
+      })
+      activePlayerId = guest.id
+      createdGuestId = guest.id
+    }
+
+    // Enforce 1-play daily limit on server: block if player already completed today's daily
+    if (gameMode === 'daily' && challengeDate && activePlayerId) {
+      const existingDaily = await prisma.dailyResult.findUnique({
+        where: {
+          playerId_challengeDate: {
+            playerId: activePlayerId,
+            challengeDate,
+          },
+        },
+      })
+
+      if (existingDaily) {
+        const now = new Date()
+        const midnight = new Date(now)
+        midnight.setHours(24, 0, 0, 0)
+        const remainingMs = Math.max(0, midnight.getTime() - now.getTime())
+
+        return NextResponse.json(
+          {
+            error: "Kunlik sinov faqat 1 kunda bir marta o'ynaladi! Keyingi sinovgacha kuting.",
+            playedToday: true,
+            remainingMs,
+          },
+          { status: 403 }
+        )
+      }
+    }
 
     await prisma.runSession.create({
       data: {
         tokenHash: hashSessionToken(token),
         gameMode,
-        challengeDate: challenge?.date,
+        challengeDate,
         startedAt: new Date(startTime),
         expiresAt,
-        playerId: player?.id,
+        playerId: activePlayerId,
       },
     })
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       token,
       startTime,
       expiresAt: expiresAt.toISOString(),
       challenge,
     })
+
+    if (createdGuestId) {
+      response.cookies.set('virus_player_id', createdGuestId, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: 'lax',
+      })
+    }
+
+    return response
   } catch (error) {
     console.error('Error starting run:', error)
     return NextResponse.json({ error: 'Failed to start run.' }, { status: 500 })

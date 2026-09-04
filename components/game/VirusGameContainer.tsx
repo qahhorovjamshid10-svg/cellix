@@ -41,7 +41,19 @@ async function requestRunToken(gameMode: GameMode, challengeDate?: string): Prom
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameMode, challengeDate }),
     })
-    if (!response.ok) throw new Error(`Run start failed (${response.status})`)
+    if (!response.ok) {
+      const errData = (await response.json().catch(() => ({}))) as { error?: string; playedToday?: boolean }
+      if (response.status === 403 && errData.playedToday) {
+        if (typeof window !== 'undefined') {
+          const d = new Date()
+          const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+          localStorage.setItem(`cellix_daily_played_${today}`, 'true')
+          alert(errData.error || "Kunlik sinov faqat 1 kunda bir marta o'ynaladi!")
+          window.location.href = '/game'
+        }
+      }
+      throw new Error(`Run start failed (${response.status})`)
+    }
     const data = (await response.json()) as { token?: unknown }
     return typeof data.token === 'string' ? data.token : null
   } catch (error) {

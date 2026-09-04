@@ -148,6 +148,12 @@ export default function GameOverModal({
         if (typeof data.coinBalance === 'number') syncCoinBalance(data.coinBalance)
         setCoinsEarned(typeof data.coinReward === 'number' ? data.coinReward : 0)
         setSaveState('saved')
+
+        if (gameMode === 'daily' && typeof window !== 'undefined') {
+          const d = new Date()
+          const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+          localStorage.setItem(`cellix_daily_played_${today}`, 'true')
+        }
       } catch (error) {
         console.error('Failed to submit score:', error)
         setSaveState('failed')
@@ -385,13 +391,24 @@ export default function GameOverModal({
               <span>{downloadedCard ? t('shareSuccess') : t('exportCardBtn')}</span>
             </button>
 
-            <button
-              onClick={onRestart}
-              className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider btn-cyber-primary text-slate-950 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>{t('playAgain')}</span>
-            </button>
+            {gameMode === 'daily' ? (
+              <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-950/40 text-center space-y-1">
+                <p className="text-xs font-mono font-bold text-amber-300">
+                  {isUz ? "BUGUNGI KUNLIK SINOV YAKUNLANDI!" : "DAILY CHALLENGE COMPLETED!"}
+                </p>
+                <p className="text-[11px] font-mono text-slate-400">
+                  {isUz ? "Kunlik sinov faqat 1 kunda 1 marta o'ynaladi. Keyingi sinov ertaga 00:00 da ochiladi." : "Daily challenge can only be played once per day. Next challenge opens tomorrow at 00:00."}
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={onRestart}
+                className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider btn-cyber-primary text-slate-950 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>{t('playAgain')}</span>
+              </button>
+            )}
 
             {/* Return to Arena Modes Screen */}
             <a
