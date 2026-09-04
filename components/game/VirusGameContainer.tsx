@@ -146,19 +146,17 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
       .catch(() => {})
   }, [])
 
-  // Strictly detect mobile devices (never show joysticks or orientation prompt on PC!)
+  // Strictly detect touch-capable devices (works on all phones, tablets, iPad Pro, Samsung Tab, etc.)
   useEffect(() => {
     const checkOrientation = () => {
       if (typeof window === 'undefined') return
       const ua = navigator.userAgent || ''
       const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
-      const isIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
-      const isTouchOnly =
-        window.matchMedia('(pointer: coarse)').matches &&
-        !window.matchMedia('(pointer: fine)').matches &&
-        window.innerWidth <= 1024
+      const isIPad = (navigator.platform === 'MacIntel' || navigator.platform === 'iPad') && navigator.maxTouchPoints > 1
+      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches
 
-      const isMobile = isMobileUA || isIPad || isTouchOnly
+      const isMobile = isMobileUA || isIPad || (hasTouchScreen && isCoarsePointer)
       setIsTouchDevice(isMobile)
 
       const portrait = isMobile && window.innerHeight > window.innerWidth
@@ -274,6 +272,11 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
         parent: containerRef.current,
         width: window.innerWidth,
         height: window.innerHeight,
+        render: {
+          pixelArt: false,
+          antialias: true,
+          roundPixels: false,
+        },
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -455,7 +458,7 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
   }
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none cursor-crosshair" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
+    <div className="fixed inset-0 w-full h-full overflow-hidden bg-slate-950 select-none cursor-crosshair game-container" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
       {/* Phaser Canvas Mount Node */}
       <div ref={containerRef} className="w-full h-full" />
 
@@ -537,11 +540,11 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
       ) : (
         <>
           {/* Cyberpunk HUD Overlay */}
-          <div className="absolute inset-0 pointer-events-none z-20 p-4 sm:p-6 flex flex-col justify-between">
+          <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between" style={{ padding: 'max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left))' }}>
         {/* Top HUD Row */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-2 sm:gap-4">
           {/* Top Left: HP Bar & Level */}
-          <div className="glass-panel p-3 sm:p-4 rounded-2xl border border-purple-500/30 bg-purple-950/80 space-y-2 pointer-events-auto min-w-[200px] sm:min-w-[260px]">
+          <div className="glass-panel p-2 sm:p-4 rounded-xl sm:rounded-2xl border border-purple-500/30 bg-purple-950/80 space-y-1.5 sm:space-y-2 pointer-events-auto min-w-[130px] sm:min-w-[260px]">
             <div className="flex items-center justify-between font-mono text-xs text-white">
               <span className="flex items-center gap-1.5 text-rose-400 font-bold">
                 <Heart className="h-4 w-4 fill-rose-500 text-rose-500 animate-pulse" />

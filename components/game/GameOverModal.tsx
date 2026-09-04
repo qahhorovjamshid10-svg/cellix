@@ -269,7 +269,7 @@ export default function GameOverModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           transition={{ duration: 0.25, ease: 'easeOut' }}
-          className="glass-panel p-6 sm:p-8 rounded-3xl border-2 border-purple-500/50 bg-slate-950/95 max-w-md w-full text-center space-y-5 shadow-[0_0_60px_rgba(176,38,255,0.4)] relative overflow-hidden"
+          className="glass-panel p-4 sm:p-8 rounded-3xl border-2 border-purple-500/50 bg-slate-950/95 max-w-md w-full text-center space-y-3 sm:space-y-5 shadow-[0_0_60px_rgba(176,38,255,0.4)] relative max-h-[92dvh] overflow-y-auto"
         >
           {/* Header Icon */}
           <div className="flex justify-center">

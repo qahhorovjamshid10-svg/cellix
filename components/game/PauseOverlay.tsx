@@ -42,7 +42,7 @@ export default function PauseOverlay({
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="relative w-full max-w-md glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 bg-slate-950/95 text-white space-y-6 text-center shadow-[0_0_50px_rgba(0,240,255,0.2)]"
+        className="relative w-full max-w-md glass-panel p-4 sm:p-8 rounded-3xl border border-cyan-500/40 bg-slate-950/95 text-white space-y-4 sm:space-y-6 text-center shadow-[0_0_50px_rgba(0,240,255,0.2)] max-h-[92dvh] overflow-y-auto"
       >
         {/* Header */}
         <div className="space-y-1">

@@ -44,17 +44,15 @@ export default function MobileControls({
 }: MobileControlsProps) {
   const [isMobileDevice, setIsMobileDevice] = useState(false)
 
-  // Strictly detect mobile devices (never show joysticks on PC/desktop!)
+  // Universal touch-capable device detection (works on all phones, tablets, iPad Pro, Samsung Tab, etc.)
   useEffect(() => {
     const checkMobile = () => {
       const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
       const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
-      const isIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
-      const isTouchOnly =
-        window.matchMedia('(pointer: coarse)').matches &&
-        !window.matchMedia('(pointer: fine)').matches &&
-        window.innerWidth <= 1024
-      setIsMobileDevice(isMobileUA || isIPad || isTouchOnly)
+      const isIPad = (navigator.platform === 'MacIntel' || navigator.platform === 'iPad') && navigator.maxTouchPoints > 1
+      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches
+      setIsMobileDevice(isMobileUA || isIPad || (hasTouchScreen && isCoarsePointer))
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
@@ -150,12 +148,12 @@ export default function MobileControls({
 
   return (
     <div
-      className={`absolute inset-0 pointer-events-none z-30 select-none ${isMobileDevice ? 'block' : 'hidden'}`}
+      className={`absolute inset-0 pointer-events-none z-30 select-none ${(forceShow || isMobileDevice) ? 'block' : 'hidden'}`}
       style={{ touchAction: 'none' }}
     >
 
       {/* ═══ Left: Movement Joystick ═══ */}
-      <div className="absolute left-4 bottom-5 pointer-events-auto" style={{ touchAction: 'none' }}>
+      <div className="absolute pointer-events-auto" style={{ touchAction: 'none', left: 'max(1rem, env(safe-area-inset-left))', bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
         <div className="text-center mb-1">
           <span className="text-[9px] font-mono font-bold text-cyan-400/70 uppercase tracking-widest">YURISH</span>
         </div>
@@ -182,7 +180,7 @@ export default function MobileControls({
       </div>
 
       {/* ═══ Right: Aim Joystick + Action Buttons ═══ */}
-      <div className="absolute right-4 bottom-5 pointer-events-auto flex flex-col items-center gap-2" style={{ touchAction: 'none' }}>
+      <div className="absolute pointer-events-auto flex flex-col items-center gap-2" style={{ touchAction: 'none', right: 'max(1rem, env(safe-area-inset-right))', bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
 
         {/* Action Buttons Row */}
         <div className="flex items-center gap-3 mb-1">
@@ -192,6 +190,7 @@ export default function MobileControls({
             aria-label="Dash"
             disabled={dashCdPct < 1}
             onTouchStart={(e) => {
+              e.preventDefault()
               e.stopPropagation()
               haptic(40)
               onDash()
@@ -215,6 +214,7 @@ export default function MobileControls({
               aria-label="Special ability (4-Way Cross or Aim Direction)"
               disabled={specCdPct < 1}
               onTouchStart={(e) => {
+                e.preventDefault()
                 e.stopPropagation()
                 haptic(45)
                 if (isAiming && (aimKnob.x !== 0 || aimKnob.y !== 0)) {
@@ -241,6 +241,7 @@ export default function MobileControls({
                   type="button"
                   aria-label="Tepa"
                   onTouchStart={(e) => {
+                    e.preventDefault()
                     e.stopPropagation()
                     haptic(35)
                     onSpecial({ x: 0, y: -1 })
@@ -253,6 +254,7 @@ export default function MobileControls({
                   type="button"
                   aria-label="Past"
                   onTouchStart={(e) => {
+                    e.preventDefault()
                     e.stopPropagation()
                     haptic(35)
                     onSpecial({ x: 0, y: 1 })
@@ -265,6 +267,7 @@ export default function MobileControls({
                   type="button"
                   aria-label="Chap"
                   onTouchStart={(e) => {
+                    e.preventDefault()
                     e.stopPropagation()
                     haptic(35)
                     onSpecial({ x: -1, y: 0 })
@@ -277,6 +280,7 @@ export default function MobileControls({
                   type="button"
                   aria-label="O'ng"
                   onTouchStart={(e) => {
+                    e.preventDefault()
                     e.stopPropagation()
                     haptic(35)
                     onSpecial({ x: 1, y: 0 })

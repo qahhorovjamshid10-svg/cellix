@@ -17,7 +17,7 @@ export default function HubLandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#040416] overflow-hidden relative flex flex-col text-white selection:bg-purple-500/30 selection:text-white">
+    <div className="min-h-screen bg-[#040416] overflow-y-auto relative flex flex-col text-white selection:bg-purple-500/30 selection:text-white">
       {/* Interactive 3D/Canvas Hologram Layer */}
       <HubHologramCanvas />
 

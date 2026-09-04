@@ -119,7 +119,7 @@ export default function PlayGamePage() {
   const isDailyLocked = Boolean(dailyStatus?.playedToday)
 
   return (
-    <div className="min-h-screen bg-[#040416] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[#040416] text-white flex flex-col items-center justify-center p-4 relative overflow-y-auto">
       {/* Background Cyber Glow */}
       <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(circle_at_center,rgba(176,38,255,0.08)_0%,transparent_70%)]" />
 

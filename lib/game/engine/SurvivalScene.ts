@@ -354,6 +354,17 @@ export default class SurvivalScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, worldSize, worldSize)
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1)
 
+    // Responsive zoom — smaller screens get zoomed out more for better visibility
+    const baseW = 1280
+    const responsiveZoom = Phaser.Math.Clamp(this.scale.width / baseW, 0.55, 1.1)
+    this.cameras.main.setZoom(responsiveZoom)
+
+    // Update zoom when device rotates or browser resizes
+    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
+      const newZoom = Phaser.Math.Clamp(gameSize.width / baseW, 0.55, 1.1)
+      this.cameras.main.setZoom(newZoom)
+    })
+
     // Keyboard Controls
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys()

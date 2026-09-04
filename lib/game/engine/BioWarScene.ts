@@ -273,7 +273,8 @@ export default class BioWarScene extends Phaser.Scene {
 
     // Camera initial settings
     this.cameras.main.setBounds(0, 0, ARENA_SIZE, ARENA_SIZE)
-    this.cameras.main.setZoom(1.1)
+    const screenFactor = Math.min(this.scale.width, this.scale.height) / 800
+    this.cameras.main.setZoom(Phaser.Math.Clamp(1.1 * screenFactor, 0.55, 1.2))
   }
 
   private drawArenaEnvironment() {
@@ -578,7 +579,9 @@ export default class BioWarScene extends Phaser.Scene {
       this.cameras.main.scrollY = this.player.y - this.cameras.main.height / 2
 
       // Dynamic Zoom based on player's mass (smooth and gradual)
-      const targetZoom = Phaser.Math.Clamp(1.15 - (this.player.mass / 2500) * 0.4, 0.52, 1.2)
+      const screenFactor = Math.min(this.scale.width, this.scale.height) / 800
+      const massZoom = 1.15 - (this.player.mass / 2500) * 0.4
+      const targetZoom = Phaser.Math.Clamp(massZoom * Phaser.Math.Clamp(screenFactor, 0.7, 1.2), 0.45, 1.2)
       this.cameras.main.zoom = Phaser.Math.Linear(this.cameras.main.zoom, targetZoom, 0.04)
     }
 

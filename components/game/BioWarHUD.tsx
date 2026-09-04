@@ -71,17 +71,15 @@ export default function BioWarHUD({
   const [mobileLeaderboardOpen, setMobileLeaderboardOpen] = useState(false)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
 
-  // Strictly detect mobile devices (never show joysticks on PC/desktop!)
+  // Universal touch-capable device detection (works on all phones, tablets, iPad Pro, Samsung Tab, etc.)
   useEffect(() => {
     const checkMobile = () => {
       const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
       const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
-      const isIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
-      const isTouchOnly =
-        window.matchMedia('(pointer: coarse)').matches &&
-        !window.matchMedia('(pointer: fine)').matches &&
-        window.innerWidth <= 1024
-      setIsMobileDevice(isMobileUA || isIPad || isTouchOnly)
+      const isIPad = (navigator.platform === 'MacIntel' || navigator.platform === 'iPad') && navigator.maxTouchPoints > 1
+      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches
+      setIsMobileDevice(isMobileUA || isIPad || (hasTouchScreen && isCoarsePointer))
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
@@ -222,7 +220,7 @@ export default function BioWarHUD({
   return (
     <div className="absolute inset-0 pointer-events-none z-30 font-mono overflow-hidden select-none" style={{ touchAction: 'none' }}>
       {/* ─── Top-Center: 3-Minute Round Countdown & Winner ─── */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-auto select-none">
+      <div className="absolute left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-auto select-none" style={{ top: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-slate-950/90 border border-cyan-500/40 backdrop-blur-md shadow-[0_0_25px_rgba(6,182,212,0.25)]">
           <div className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-black text-amber-400">
             <Trophy className="h-3 sm:h-3.5 w-3 sm:w-3.5 animate-pulse" />
@@ -359,8 +357,8 @@ export default function BioWarHUD({
       </div>
 
       {/* ─── Radar (Positioned comfortably on left side above joystick) ─── */}
-      <div className="absolute bottom-28 sm:bottom-5 left-3 sm:left-5 z-20 pointer-events-none">
-        <div className="relative w-24 h-24 sm:w-36 sm:h-36 rounded-2xl border-2 border-cyan-500/40 bg-slate-950/90 backdrop-blur-md overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.25)]">
+      <div className="absolute z-20 pointer-events-none" style={{ bottom: 'max(7rem, calc(env(safe-area-inset-bottom) + 7rem))', left: 'max(0.75rem, env(safe-area-inset-left))' }}>
+        <div className="relative w-20 h-20 sm:w-36 sm:h-36 rounded-xl sm:rounded-2xl border-2 border-cyan-500/40 bg-slate-950/90 backdrop-blur-md overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.25)]">
           {/* Radar Scanner Line */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.15)_0%,transparent_70%)]" />
           <div className="absolute inset-0 border border-cyan-500/10 rounded-2xl" />
@@ -392,8 +390,8 @@ export default function BioWarHUD({
       </div>
 
       {/* ─── Bottom-Center: Mass & Nitro Speedometer Bar ─── */}
-      <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 sm:gap-2 pointer-events-auto">
-        <div className="glass-panel px-3 sm:px-6 py-1.5 sm:py-2.5 rounded-2xl border border-cyan-500/40 bg-slate-950/90 backdrop-blur-md flex items-center gap-3 sm:gap-6 shadow-[0_0_30px_rgba(6,182,212,0.2)]">
+      <div className="absolute left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 sm:gap-2 pointer-events-auto" style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+        <div className="glass-panel px-2 sm:px-6 py-1 sm:py-2.5 rounded-xl sm:rounded-2xl border border-cyan-500/40 bg-slate-950/90 backdrop-blur-md flex items-center gap-2 sm:gap-6 shadow-[0_0_30px_rgba(6,182,212,0.2)]">
           {/* Mass */}
           <div className="flex flex-col items-center">
             <span className="text-[8px] sm:text-[10px] text-slate-400 uppercase tracking-widest font-bold">
@@ -475,7 +473,7 @@ export default function BioWarHUD({
       {/* ═══ MOBILE TOUCH CONTROLS (Joystik va Sensorli Tugmalar) ═══ */}
       <div className={`${isMobileDevice ? 'block' : 'hidden'} pointer-events-auto`}>
         {/* 1. Left Side: Virtual Movement Joystick */}
-        <div className="absolute left-3 bottom-4 pointer-events-auto" style={{ touchAction: 'none' }}>
+        <div className="absolute pointer-events-auto" style={{ touchAction: 'none', left: 'max(0.75rem, env(safe-area-inset-left))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="text-center mb-1">
             <span className="text-[8px] font-mono font-bold text-cyan-400/70 uppercase tracking-widest">
               {isSteering ? 'BURILISH' : 'BOSHQARUV'}
@@ -513,7 +511,7 @@ export default function BioWarHUD({
         </div>
 
         {/* 2. Right Side: Action Buttons (NITRO + LAZER AUTO-AIM) */}
-        <div className="absolute right-3 bottom-4 pointer-events-auto flex items-end gap-3" style={{ touchAction: 'none' }}>
+        <div className="absolute pointer-events-auto flex items-end gap-2 sm:gap-3" style={{ touchAction: 'none', right: 'max(0.75rem, env(safe-area-inset-right))', bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           {/* LAZER (AUTO-AIM) BUTTON */}
           <div className="flex flex-col items-center">
             <span className="text-[7px] font-bold text-rose-400 uppercase tracking-wider mb-1 bg-rose-950/70 px-1.5 py-0.2 rounded border border-rose-500/30 animate-pulse">

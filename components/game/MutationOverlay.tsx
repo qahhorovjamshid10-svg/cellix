@@ -97,7 +97,7 @@ export default function MutationOverlay({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md cursor-default">
-      <div className="relative w-full max-w-4xl space-y-6 text-center">
+      <div className="relative w-full max-w-4xl space-y-4 sm:space-y-6 text-center max-h-[92dvh] overflow-y-auto">
         {/* Header */}
         <div className="space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-bold tracking-widest uppercase">
@@ -106,7 +106,7 @@ export default function MutationOverlay({
               ? `${level}-DARAJA MUTATSIYA OCHILDI`
               : `LEVEL ${level} MUTATION UNLOCKED`}
           </div>
-          <h2 className="text-3xl sm:text-5xl font-mono font-extrabold tracking-tight text-white text-glow-cyan">
+          <h2 className="text-xl sm:text-5xl font-mono font-extrabold tracking-tight text-white text-glow-cyan">
             {isUz ? 'MUTATSIYANGIZNI TANLANG' : 'CHOOSE YOUR MUTATION'}
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-mono">
@@ -154,7 +154,7 @@ export default function MutationOverlay({
         </div>
 
         {/* 3 Interactive Mutation Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 pt-2">
+        <div className="grid grid-cols-1 landscape:grid-cols-3 md:grid-cols-3 gap-3 sm:gap-6 pt-1 sm:pt-2">
           {displayedOptions.map((mutation, idx) => {
             const rarityStyle = getRarityBadgeColor(mutation.rarity)
             const statTip = getStatTooltip(mutation)
