@@ -20,7 +20,7 @@ interface GameOverModalProps {
   criticalHits: number
   bossDefeated: boolean
   combosCount: number
-  gameMode: 'classic' | 'survival' | 'daily' | 'practice' | 'multiplayer'
+  gameMode: 'classic' | 'survival' | 'daily'
   wave?: number
   isVictory?: boolean
   wavesCleared?: number
@@ -72,7 +72,7 @@ export default function GameOverModal({
       level,
       kills,
       survivalTime,
-      gameMode: gameMode === 'practice' || gameMode === 'multiplayer' ? 'classic' : gameMode,
+      gameMode,
       isVictory,
       wave: wave ?? wavesCleared ?? 0,
       damageDealt,
@@ -87,7 +87,7 @@ export default function GameOverModal({
       level,
       kills,
       survivalTime,
-      gameMode: gameMode === 'practice' || gameMode === 'multiplayer' ? 'classic' : gameMode,
+      gameMode,
       isVictory,
       bossDefeated,
       combosCount,

@@ -4,8 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Phaser from 'phaser'
 import MainScene, { GameHUDData, MainSceneConfig } from '@/lib/game/engine/MainScene'
 import SurvivalScene, { SurvivalSceneConfig } from '@/lib/game/engine/SurvivalScene'
-import { PracticeScene, PracticeSceneConfig } from '@/lib/game/engine/PracticeScene'
-import { MultiplayerScene, MultiplayerSceneConfig } from '@/lib/game/engine/MultiplayerScene'
 import { getSelectedSkinId } from '@/lib/game/cosmetics'
 import MutationOverlay from './MutationOverlay'
 import GameOverModal from './GameOverModal'
@@ -17,18 +15,14 @@ import { getActiveCombos } from '@/lib/game/combos'
 import { getDailyChallenge } from '@/lib/game/daily'
 import { Volume2, VolumeX, Heart, Zap, Biohazard, Pause, Shield, Bomb, Crosshair, Sparkles } from 'lucide-react'
 
-type GameScene = MainScene | SurvivalScene | PracticeScene | MultiplayerScene
-type GameSceneConfig = MainSceneConfig | SurvivalSceneConfig | PracticeSceneConfig | MultiplayerSceneConfig
-type GameMode = 'classic' | 'survival' | 'daily' | 'practice' | 'multiplayer'
+type GameScene = MainScene | SurvivalScene
+type GameSceneConfig = MainSceneConfig | SurvivalSceneConfig
+type GameMode = 'classic' | 'survival' | 'daily'
 
 function getSceneKey(gameMode: GameMode) {
   switch (gameMode) {
     case 'survival':
       return 'SurvivalScene'
-    case 'practice':
-      return 'PracticeScene'
-    case 'multiplayer':
-      return 'MultiplayerScene'
     default:
       return 'MainScene'
   }
@@ -212,12 +206,6 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
         if (gameMode === 'survival') {
           sceneKey = 'SurvivalScene'
           sceneInstance = new SurvivalScene()
-        } else if (gameMode === 'practice') {
-          sceneKey = 'PracticeScene'
-          sceneInstance = new PracticeScene()
-        } else if (gameMode === 'multiplayer') {
-          sceneKey = 'MultiplayerScene'
-          sceneInstance = new MultiplayerScene()
         }
 
         game.scene.add(sceneKey, sceneInstance, false)
@@ -270,7 +258,6 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
             : {}),
           ...(dailyChallenge ? { challenge: dailyChallenge } : {}),
           initialSkin,
-          ...(gameMode === 'multiplayer' ? { initialSkinP1: initialSkin } : {}),
         } as GameSceneConfig
 
         sceneConfigRef.current = sceneConfig

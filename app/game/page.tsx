@@ -8,8 +8,6 @@ import {
   Waves,
   ArrowLeft,
   Calendar,
-  GraduationCap,
-  Users,
   Sparkles,
   Lock,
   Clock,
@@ -37,7 +35,7 @@ interface DailyStatusData {
 }
 
 export default function PlayGamePage() {
-  const [selectedMode, setSelectedMode] = useState<'classic' | 'survival' | 'daily' | 'practice' | 'multiplayer' | null>(null)
+  const [selectedMode, setSelectedMode] = useState<'classic' | 'survival' | 'daily' | null>(null)
   const [dailyStatus, setDailyStatus] = useState<DailyStatusData | null>(null)
   const [countdownMs, setCountdownMs] = useState<number>(0)
   const [showDailyBlockedModal, setShowDailyBlockedModal] = useState<boolean>(false)
@@ -151,25 +149,25 @@ export default function PlayGamePage() {
           </p>
         </div>
 
-        {/* 5 Game Modes Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* 3 Game Modes Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
           {/* 1. Classic Endless */}
           <button
             onClick={() => setSelectedMode('classic')}
-            className="group glass-panel rounded-2xl p-5 border border-purple-500/40 hover:border-purple-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_35px_rgba(176,38,255,0.4)] text-left cursor-pointer flex flex-col justify-between"
+            className="group glass-panel rounded-2xl p-6 border border-purple-500/40 hover:border-purple-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_35px_rgba(176,38,255,0.4)] text-left cursor-pointer flex flex-col justify-between"
           >
             <div>
-              <div className="p-3 rounded-xl bg-purple-500/20 text-purple-400 group-hover:scale-110 transition-transform w-fit mb-3">
-                <Swords className="h-6 w-6" />
+              <div className="p-3.5 rounded-xl bg-purple-500/20 text-purple-400 group-hover:scale-110 transition-transform w-fit mb-4">
+                <Swords className="h-7 w-7" />
               </div>
-              <h2 className="text-xl font-mono font-bold text-white group-hover:text-purple-400 transition-colors">
+              <h2 className="text-2xl font-mono font-bold text-white group-hover:text-purple-400 transition-colors">
                 {t('modeClassic')}
               </h2>
-              <p className="text-xs font-mono text-slate-400 mt-2">
+              <p className="text-xs font-mono text-slate-400 mt-2 leading-relaxed">
                 {t('modeClassicDesc')}
               </p>
             </div>
-            <div className="mt-4 text-[11px] font-mono text-purple-400 font-bold">
+            <div className="mt-6 text-xs font-mono text-purple-400 font-bold tracking-wider">
               <span>ENDLESS RUN</span>
             </div>
           </button>
@@ -177,20 +175,20 @@ export default function PlayGamePage() {
           {/* 2. Survival Waves */}
           <button
             onClick={() => setSelectedMode('survival')}
-            className="group glass-panel rounded-2xl p-5 border border-blue-500/40 hover:border-blue-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_35px_rgba(59,130,246,0.3)] text-left cursor-pointer flex flex-col justify-between bg-blue-950/20"
+            className="group glass-panel rounded-2xl p-6 border border-blue-500/40 hover:border-blue-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_35px_rgba(59,130,246,0.3)] text-left cursor-pointer flex flex-col justify-between bg-blue-950/20"
           >
             <div>
-              <div className="p-3 rounded-xl bg-blue-500/20 text-blue-400 group-hover:scale-110 transition-transform w-fit mb-3">
-                <Waves className="h-6 w-6" />
+              <div className="p-3.5 rounded-xl bg-blue-500/20 text-blue-400 group-hover:scale-110 transition-transform w-fit mb-4">
+                <Waves className="h-7 w-7" />
               </div>
-              <h2 className="text-xl font-mono font-bold text-white group-hover:text-blue-400 transition-colors">
+              <h2 className="text-2xl font-mono font-bold text-white group-hover:text-blue-400 transition-colors">
                 {t('modeSurvival')}
               </h2>
-              <p className="text-xs font-mono text-slate-400 mt-2">
+              <p className="text-xs font-mono text-slate-400 mt-2 leading-relaxed">
                 {t('modeSurvivalDesc')}
               </p>
             </div>
-            <div className="mt-4 text-[11px] font-mono text-blue-400 font-bold">
+            <div className="mt-6 text-xs font-mono text-blue-400 font-bold tracking-wider">
               <span>10 WAVES</span>
             </div>
           </button>
@@ -204,103 +202,61 @@ export default function PlayGamePage() {
               }
               setSelectedMode('daily')
             }}
-            className={`group glass-panel rounded-2xl p-5 border transition-all duration-300 text-left flex flex-col justify-between relative overflow-hidden ${
+            className={`group glass-panel rounded-2xl p-6 border transition-all duration-300 text-left flex flex-col justify-between relative overflow-hidden ${
               isDailyLocked
                 ? 'border-amber-600/40 bg-amber-950/25 hover:border-amber-400/70 hover:shadow-[0_0_25px_rgba(245,158,11,0.25)] cursor-pointer'
                 : 'border-amber-500/40 hover:border-amber-400 hover:-translate-y-1.5 hover:shadow-[0_0_35px_rgba(245,158,11,0.3)] bg-amber-950/20 cursor-pointer'
             }`}
           >
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-3 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform w-fit">
-                  {isDailyLocked ? <Lock className="h-6 w-6 text-amber-400" /> : <Calendar className="h-6 w-6" />}
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3.5 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform w-fit">
+                  {isDailyLocked ? <Lock className="h-7 w-7 text-amber-400" /> : <Calendar className="h-7 w-7" />}
                 </div>
 
                 {isDailyLocked && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-mono font-bold tracking-wider">
-                    <Lock className="h-2.5 w-2.5" />
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-mono font-bold tracking-wider">
+                    <Lock className="h-3 w-3" />
                     {isUz ? "O'YNALGAN" : 'PLAYED'}
                   </span>
                 )}
               </div>
 
-              <h2 className="text-xl font-mono font-bold text-white group-hover:text-amber-400 transition-colors flex items-center gap-2">
+              <h2 className="text-2xl font-mono font-bold text-white group-hover:text-amber-400 transition-colors flex items-center gap-2">
                 <span>{isUz ? 'KUNLIK' : 'DAILY'}</span>
               </h2>
 
-              <p className="text-xs font-mono text-amber-300/80 mt-1 font-bold">
+              <p className="text-xs font-mono text-amber-300/90 mt-1 font-bold">
                 {dailyMod.badge} {isUz ? dailyMod.nameUz : dailyMod.name}
               </p>
 
               {/* 24-Hour Countdown Box for Played state */}
               {isDailyLocked ? (
-                <div className="mt-3 p-2.5 rounded-xl bg-black/50 border border-amber-500/30">
-                  <div className="flex items-center gap-1 text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">
-                    <Clock className="h-3 w-3 animate-pulse" />
+                <div className="mt-4 p-3 rounded-xl bg-black/50 border border-amber-500/30">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">
+                    <Clock className="h-3.5 w-3.5 animate-pulse" />
                     <span>{isUz ? 'Keyingi sinov:' : 'Next reset:'}</span>
                   </div>
-                  <div className="text-sm font-mono font-black text-amber-300 tracking-widest mt-0.5">
+                  <div className="text-base font-mono font-black text-amber-300 tracking-widest mt-1">
                     {formatCountdown(countdownMs)}
                   </div>
                 </div>
               ) : (
-                <p className="text-[11px] font-mono text-slate-400 mt-2">
+                <p className="text-xs font-mono text-slate-400 mt-2 leading-relaxed">
                   {isUz ? "Har kuni maxsus seed va yangi qoidalar." : "Daily unique seed and modifiers."}
                 </p>
               )}
             </div>
 
-            <div className="mt-4 text-[11px] font-mono font-bold">
+            <div className="mt-6 text-xs font-mono font-bold tracking-wider">
               {isDailyLocked ? (
                 <span className="text-amber-400 flex items-center gap-1">
-                  <Lock className="h-3 w-3" />
+                  <Lock className="h-3.5 w-3.5" />
                   <span>{isUz ? '1 MARTA/KUN' : '1 PLAY/DAY'}</span>
                 </span>
               ) : (
                 <span className="text-amber-400">DAILY SEED</span>
               )}
-            </div>
-          </button>
-
-          {/* 4. Practice */}
-          <button
-            onClick={() => setSelectedMode('practice')}
-            className="group glass-panel rounded-2xl p-5 border border-emerald-500/40 hover:border-emerald-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_35px_rgba(16,185,129,0.3)] text-left cursor-pointer flex flex-col justify-between bg-emerald-950/15"
-          >
-            <div>
-              <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform w-fit mb-3">
-                <GraduationCap className="h-6 w-6" />
-              </div>
-              <h2 className="text-xl font-mono font-bold text-white group-hover:text-emerald-400 transition-colors">
-                {isUz ? 'MASHQ' : 'PRACTICE'}
-              </h2>
-              <p className="text-xs font-mono text-slate-400 mt-2">
-                {t('modePracticeDesc')}
-              </p>
-            </div>
-            <div className="mt-4 text-[11px] font-mono text-emerald-400 font-bold">
-              <span>DPS & DUMMY</span>
-            </div>
-          </button>
-
-          {/* 5. Multiplayer */}
-          <button
-            onClick={() => setSelectedMode('multiplayer')}
-            className="group glass-panel rounded-2xl p-5 border border-cyan-500/40 hover:border-cyan-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_35px_rgba(6,182,212,0.3)] text-left cursor-pointer flex flex-col justify-between bg-cyan-950/15"
-          >
-            <div>
-              <div className="p-3 rounded-xl bg-cyan-500/20 text-cyan-400 group-hover:scale-110 transition-transform w-fit mb-3">
-                <Users className="h-6 w-6" />
-              </div>
-              <h2 className="text-xl font-mono font-bold text-white group-hover:text-cyan-400 transition-colors">
-                {isUz ? '2 O‘YINCHI' : '2-PLAYER'}
-              </h2>
-              <p className="text-xs font-mono text-slate-400 mt-2">
-                {t('modeMultiplayerDesc')}
-              </p>
-            </div>
-            <div className="mt-4 text-[11px] font-mono text-cyan-400 font-bold">
-              <span>LOCAL CO-OP</span>
             </div>
           </button>
         </div>

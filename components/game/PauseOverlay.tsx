@@ -12,7 +12,7 @@ interface PauseOverlayProps {
   level: number
   kills: number
   survivalTime: number
-  gameMode: 'classic' | 'survival' | 'daily' | 'practice' | 'multiplayer'
+  gameMode: 'classic' | 'survival' | 'daily'
   isMuted: boolean
   onToggleSound: () => void
 }
