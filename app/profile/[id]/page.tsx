@@ -52,9 +52,17 @@ interface ProfileStats {
   maxSurvivalTime: number
 }
 
+interface BioWarProfileStats {
+  games: number
+  bestScore: number
+  totalKills: number
+  maxSurvival: number
+}
+
 interface ProfileResponse {
   player: ProfilePlayer
   stats: ProfileStats
+  biowarStats?: BioWarProfileStats
   achievements: Achievement[]
 }
 
@@ -76,7 +84,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   const [saving, setSaving] = useState(false)
   const [activeSkinId, setActiveSkinId] = useState<CellSkinId>('neon_cyan')
   const [ownedSkinIds, setOwnedSkinIds] = useState<CellSkinId[]>(['neon_cyan'])
-  const [activeTab, setActiveTab] = useState<'overview' | 'wardrobe' | 'analytics'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'wardrobe' | 'biowar'>('overview')
   const [purchasingSkinId, setPurchasingSkinId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -386,14 +394,14 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           </button>
 
           <button
-            onClick={() => setActiveTab('analytics')}
+            onClick={() => setActiveTab('biowar')}
             className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer ${
-              activeTab === 'analytics'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+              activeTab === 'biowar'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            📈 {t('analyticsTitle')}
+            ⚔️ BIO-WAR 30
           </button>
         </div>
 
@@ -543,101 +551,88 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        {/* TAB 3: BATTLE ANALYTICS & HEATMAP */}
-        {activeTab === 'analytics' && (
+        {/* TAB 3: BIO-WAR 30 ARENA STATS */}
+        {activeTab === 'biowar' && (
           <div className="space-y-6 font-mono">
             <div>
-              <h3 className="text-lg font-bold text-white">{t('analyticsTitle')}</h3>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>⚔️ BIO-WAR 30</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                  ARENA PROFILI
+                </span>
+              </h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 {isUz
-                  ? 'Jang telemetriyasi: DPS o‘sishi, zararlar taqsimoti va o‘limlar xaritasi'
-                  : 'Battle telemetry: DPS curves, damage breakdown & spatial death heatmap'}
+                  ? '30 kishilik kiber-arenadagi erishilgan rekordlar va o‘yinlar tarixi'
+                  : 'Records, peak mass and performance in 30-player Bio-War arena'}
               </p>
             </div>
 
-            {/* Spatial Death Heatmap Arena Grid */}
-            <div className="glass-panel p-6 rounded-3xl border border-purple-500/30 bg-slate-950/70 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-300 uppercase">{t('heatmapLabel')}</span>
-                <span className="text-[10px] text-slate-500">3000 x 3000 ARENA PROJECTION</span>
+            {/* Bio-War Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="glass-panel p-4 rounded-2xl border border-rose-500/30 bg-slate-950/70 text-center">
+                <Trophy className="h-5 w-5 text-amber-400 mx-auto mb-1" />
+                <span className="text-[10px] text-slate-400 uppercase block">{isUz ? 'Eng Yuqori Ball' : 'Best Score'}</span>
+                <span className="text-2xl font-bold text-amber-400">
+                  {(profileData.biowarStats?.bestScore || 0).toLocaleString()}
+                </span>
               </div>
 
-              <div className="relative w-full aspect-video rounded-2xl bg-[#040416] border border-slate-800 overflow-hidden flex items-center justify-center p-4">
-                {/* Micro Grid Lines */}
-                <div
-                  className="absolute inset-0 opacity-20 pointer-events-none"
-                  style={{
-                    backgroundImage: `linear-gradient(to right, rgba(168, 85, 247, 0.2) 1px, transparent 1px),
-                                      linear-gradient(to bottom, rgba(168, 85, 247, 0.2) 1px, transparent 1px)`,
-                    backgroundSize: '24px 24px',
-                  }}
-                />
+              <div className="glass-panel p-4 rounded-2xl border border-cyan-500/30 bg-slate-950/70 text-center">
+                <Hexagon className="h-5 w-5 text-cyan-400 mx-auto mb-1" />
+                <span className="text-[10px] text-slate-400 uppercase block">{isUz ? 'Jami O‘yinlar' : 'Total Matches'}</span>
+                <span className="text-2xl font-bold text-cyan-400">
+                  {profileData.biowarStats?.games || 0}
+                </span>
+              </div>
 
-                {/* Center Spawn Indicator */}
-                <div className="absolute w-6 h-6 rounded-full border-2 border-cyan-400 bg-cyan-500/20 flex items-center justify-center text-[8px] text-cyan-300 font-bold">
-                  S
-                </div>
+              <div className="glass-panel p-4 rounded-2xl border border-rose-500/30 bg-slate-950/70 text-center">
+                <Swords className="h-5 w-5 text-rose-400 mx-auto mb-1" />
+                <span className="text-[10px] text-slate-400 uppercase block">{isUz ? 'Jami Killar' : 'Total Kills'}</span>
+                <span className="text-2xl font-bold text-rose-400">
+                  {profileData.biowarStats?.totalKills || 0}
+                </span>
+              </div>
 
-                {/* Simulated / Recorded Spatial Death Markers */}
-                <div className="absolute top-[28%] left-[34%] w-4 h-4 rounded-full bg-rose-500/60 blur-[2px] animate-ping" />
-                <div className="absolute top-[28%] left-[34%] w-3 h-3 rounded-full bg-rose-500 border border-white" />
-
-                <div className="absolute top-[65%] left-[72%] w-4 h-4 rounded-full bg-rose-500/60 blur-[2px] animate-ping" />
-                <div className="absolute top-[65%] left-[72%] w-3 h-3 rounded-full bg-rose-500 border border-white" />
-
-                <div className="absolute top-[42%] left-[80%] w-4 h-4 rounded-full bg-rose-500/60 blur-[2px]" />
-                <div className="absolute top-[42%] left-[80%] w-3 h-3 rounded-full bg-rose-500 border border-white" />
-
-                <div className="absolute bottom-3 left-4 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-1 rounded-lg border border-slate-800">
-                  🔴 {isUz ? 'Oxirgi o‘lim nuqtalari' : 'Recent death hotspots'}
-                </div>
+              <div className="glass-panel p-4 rounded-2xl border border-emerald-500/30 bg-slate-950/70 text-center">
+                <Clock className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
+                <span className="text-[10px] text-slate-400 uppercase block">{isUz ? 'Maksimal Vaqt' : 'Max Survival'}</span>
+                <span className="text-2xl font-bold text-emerald-400">
+                  {formatTime(profileData.biowarStats?.maxSurvival || 0)}
+                </span>
               </div>
             </div>
 
-            {/* Damage Source Breakdown Bars */}
-            <div className="glass-panel p-6 rounded-3xl border border-slate-800 bg-slate-950/70 space-y-4">
-              <span className="text-xs font-bold text-white uppercase">{isUz ? 'Mutatsiyalar Zarar Taqsimoti' : 'Damage By Source'}</span>
-              <div className="space-y-3 text-xs">
-                <div>
-                  <div className="flex justify-between text-slate-300 mb-1">
-                    <span>Spora O‘qlari (Spores)</span>
-                    <span className="text-cyan-400 font-bold">42%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                    <div className="h-full bg-cyan-400 rounded-full" style={{ width: '42%' }} />
-                  </div>
+            {/* Bio-War Tier Card */}
+            <div className="glass-panel p-6 rounded-3xl border border-rose-500/40 bg-slate-950/80 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_0_30px_rgba(244,63,94,0.15)]">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-2xl shadow-md">
+                  👑
                 </div>
-
                 <div>
-                  <div className="flex justify-between text-slate-300 mb-1">
-                    <span>Zanjirli Chaqmoq & Toksik Bo‘ron</span>
-                    <span className="text-purple-400 font-bold">28%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                    <div className="h-full bg-purple-400 rounded-full" style={{ width: '28%' }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-slate-300 mb-1">
-                    <span>Dash & Radial To‘lqin</span>
-                    <span className="text-rose-400 font-bold">18%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                    <div className="h-full bg-rose-400 rounded-full" style={{ width: '18%' }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-slate-300 mb-1">
-                    <span>Nanitlar & Viral Klon</span>
-                    <span className="text-amber-400 font-bold">12%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400 rounded-full" style={{ width: '12%' }} />
-                  </div>
+                  <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                    {profileData.biowarStats && profileData.biowarStats.bestScore >= 6000
+                      ? '👑 TITAN LEVIATHAN'
+                      : profileData.biowarStats && profileData.biowarStats.bestScore >= 2500
+                        ? '🥇 APEX PREDATOR'
+                        : profileData.biowarStats && profileData.biowarStats.bestScore >= 500
+                          ? '🥈 KIBER-VIPER'
+                          : '🥉 PLANKTON'}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {isUz
+                      ? '3 daqiqalik raundlarda ilon massasi va killariga qarab beriladigan kiber unvon'
+                      : 'Cyber rank tier based on peak mass and frags in 3-minute rounds'}
+                  </p>
                 </div>
               </div>
+
+              <Link
+                href="/game"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-lg hover:shadow-rose-500/30 shrink-0"
+              >
+                ⚔️ {isUz ? 'Jangga Kirish' : 'Enter Bio-War'}
+              </Link>
             </div>
           </div>
         )}

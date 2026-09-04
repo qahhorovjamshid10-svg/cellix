@@ -82,6 +82,12 @@ export async function GET(
       bossDefeated,
     })
 
+    const biowarSessions = allSessions.filter((s) => s.gameMode === 'biowar')
+    const biowarGames = biowarSessions.length
+    const biowarBestScore = biowarSessions.length > 0 ? Math.max(...biowarSessions.map((s) => s.score)) : 0
+    const biowarTotalKills = biowarSessions.reduce((sum, s) => sum + s.kills, 0)
+    const biowarMaxSurvival = biowarSessions.length > 0 ? Math.max(...biowarSessions.map((s) => s.survivalTime)) : 0
+
     return NextResponse.json({
       player: {
         id: player.id,
@@ -99,6 +105,12 @@ export async function GET(
         maxLevel,
         avgSurvival,
         maxSurvivalTime,
+      },
+      biowarStats: {
+        games: biowarGames,
+        bestScore: biowarBestScore,
+        totalKills: biowarTotalKills,
+        maxSurvival: biowarMaxSurvival,
       },
       achievements,
     })

@@ -5,7 +5,7 @@ import { checkPersistentRateLimit, getRequestRateLimitKey } from '@/lib/ratelimi
 import { generateSessionToken, hashSessionToken, SESSION_TTL_MS } from '@/lib/security'
 import { getDailyChallenge } from '@/lib/game/daily'
 
-const GAME_MODES = ['classic', 'survival', 'daily'] as const
+const GAME_MODES = ['classic', 'survival', 'daily', 'biowar'] as const
 type GameMode = (typeof GAME_MODES)[number]
 
 export async function POST(req: Request) {

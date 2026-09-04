@@ -1,15 +1,16 @@
 'use client'
 
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Zap, Sparkles, Crosshair } from 'lucide-react'
 
 interface MobileControlsProps {
   onMove: (vector: { x: number; y: number }) => void
   onAttack: (target: { x: number; y: number; isAttacking: boolean }) => void
   onDash: () => void
-  onSpecial: () => void
+  onSpecial: (dir?: { x: number; y: number }) => void
   dashCdPct: number
   specCdPct: number
+  forceShow?: boolean
 }
 
 function haptic(ms = 30) {
@@ -39,7 +40,27 @@ export default function MobileControls({
   onSpecial,
   dashCdPct,
   specCdPct,
+  forceShow = false,
 }: MobileControlsProps) {
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
+
+  // Strictly detect mobile devices (never show joysticks on PC/desktop!)
+  useEffect(() => {
+    const checkMobile = () => {
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+      const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+      const isIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+      const isTouchOnly =
+        window.matchMedia('(pointer: coarse)').matches &&
+        !window.matchMedia('(pointer: fine)').matches &&
+        window.innerWidth <= 1024
+      setIsMobileDevice(isMobileUA || isIPad || isTouchOnly)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // ─── Move Joystick State ──────────────────────────────────
   const moveRef = useRef<HTMLDivElement | null>(null)
   const moveIdRef = useRef<number | null>(null)
@@ -128,11 +149,14 @@ export default function MobileControls({
   }, [onAttack])
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-30 select-none sm:hidden" style={{ touchAction: 'none' }}>
+    <div
+      className={`absolute inset-0 pointer-events-none z-30 select-none ${isMobileDevice ? 'block' : 'hidden'}`}
+      style={{ touchAction: 'none' }}
+    >
 
       {/* ═══ Left: Movement Joystick ═══ */}
-      <div className="absolute left-4 bottom-6 pointer-events-auto" style={{ touchAction: 'none' }}>
-        <div className="text-center mb-1.5">
+      <div className="absolute left-4 bottom-5 pointer-events-auto" style={{ touchAction: 'none' }}>
+        <div className="text-center mb-1">
           <span className="text-[9px] font-mono font-bold text-cyan-400/70 uppercase tracking-widest">YURISH</span>
         </div>
         <div
@@ -158,10 +182,11 @@ export default function MobileControls({
       </div>
 
       {/* ═══ Right: Aim Joystick + Action Buttons ═══ */}
-      <div className="absolute right-4 bottom-6 pointer-events-auto flex flex-col items-center gap-2" style={{ touchAction: 'none' }}>
+      <div className="absolute right-4 bottom-5 pointer-events-auto flex flex-col items-center gap-2" style={{ touchAction: 'none' }}>
 
         {/* Action Buttons Row */}
-        <div className="flex gap-2.5 mb-1">
+        <div className="flex items-center gap-3 mb-1">
+          {/* DASH BUTTON */}
           <button
             type="button"
             aria-label="Dash"
@@ -182,25 +207,87 @@ export default function MobileControls({
             <span className="text-[7px] font-bold mt-0.5 leading-none">DASH</span>
           </button>
 
-          <button
-            type="button"
-            aria-label="Special ability"
-            disabled={specCdPct < 1}
-            onTouchStart={(e) => {
-              e.stopPropagation()
-              haptic(40)
-              onSpecial()
-            }}
-            className={`h-14 w-14 rounded-2xl border-2 flex flex-col items-center justify-center font-mono transition-all active:scale-90 ${
-              specCdPct >= 1
-                ? 'bg-purple-500/90 text-white border-purple-300 shadow-[0_0_15px_rgba(176,38,255,0.5)]'
-                : 'bg-slate-900/80 text-slate-600 border-slate-700'
-            }`}
-            style={{ touchAction: 'manipulation' }}
-          >
-            <Sparkles className="h-5 w-5" />
-            <span className="text-[7px] font-bold mt-0.5 leading-none">MAXSUS</span>
-          </button>
+          {/* 4-WAY & DIRECTIONAL SPECIAL ABILITY BUTTON */}
+          <div className="relative h-14 w-14 flex items-center justify-center">
+            {/* Main Center Button: fires 4-Way Cross (Right, Left, Up, Down) or towards current aim */}
+            <button
+              type="button"
+              aria-label="Special ability (4-Way Cross or Aim Direction)"
+              disabled={specCdPct < 1}
+              onTouchStart={(e) => {
+                e.stopPropagation()
+                haptic(45)
+                if (isAiming && (aimKnob.x !== 0 || aimKnob.y !== 0)) {
+                  onSpecial({ x: aimKnob.x, y: aimKnob.y })
+                } else {
+                  onSpecial() // 4-way cross blast (Right, Left, Up, Down simultaneously)
+                }
+              }}
+              className={`h-full w-full rounded-2xl border-2 flex flex-col items-center justify-center font-mono transition-all active:scale-90 relative overflow-hidden ${
+                specCdPct >= 1
+                  ? 'bg-purple-600/90 text-white border-purple-300 shadow-[0_0_15px_rgba(176,38,255,0.6)]'
+                  : 'bg-slate-900/80 text-slate-600 border-slate-700'
+              }`}
+              style={{ touchAction: 'manipulation' }}
+            >
+              <Sparkles className="h-4 w-4" />
+              <span className="text-[6.5px] font-bold mt-0.5 leading-none">4-WAY</span>
+            </button>
+
+            {/* Quick Cardinal Direction Wings: ▲ Tepa, ▼ Past, ◄ Chap, ► O'ng */}
+            {specCdPct >= 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Tepa"
+                  onTouchStart={(e) => {
+                    e.stopPropagation()
+                    haptic(35)
+                    onSpecial({ x: 0, y: -1 })
+                  }}
+                  className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-6 h-3.5 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  aria-label="Past"
+                  onTouchStart={(e) => {
+                    e.stopPropagation()
+                    haptic(35)
+                    onSpecial({ x: 0, y: 1 })
+                  }}
+                  className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-6 h-3.5 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                >
+                  ▼
+                </button>
+                <button
+                  type="button"
+                  aria-label="Chap"
+                  onTouchStart={(e) => {
+                    e.stopPropagation()
+                    haptic(35)
+                    onSpecial({ x: -1, y: 0 })
+                  }}
+                  className="absolute top-1/2 -left-2.5 -translate-y-1/2 w-3.5 h-6 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                >
+                  ◄
+                </button>
+                <button
+                  type="button"
+                  aria-label="O'ng"
+                  onTouchStart={(e) => {
+                    e.stopPropagation()
+                    haptic(35)
+                    onSpecial({ x: 1, y: 0 })
+                  }}
+                  className="absolute top-1/2 -right-2.5 -translate-y-1/2 w-3.5 h-6 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                >
+                  ►
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Aim & Shoot Joystick */}

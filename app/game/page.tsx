@@ -13,6 +13,8 @@ import {
   Clock,
   X,
   Trophy,
+  Skull,
+  Crown,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useLanguage } from '@/components/LanguageContext'
@@ -35,7 +37,7 @@ interface DailyStatusData {
 }
 
 export default function PlayGamePage() {
-  const [selectedMode, setSelectedMode] = useState<'classic' | 'survival' | 'daily' | null>(null)
+  const [selectedMode, setSelectedMode] = useState<'classic' | 'survival' | 'daily' | 'biowar' | null>(null)
   const [dailyStatus, setDailyStatus] = useState<DailyStatusData | null>(null)
   const [countdownMs, setCountdownMs] = useState<number>(0)
   const [showDailyBlockedModal, setShowDailyBlockedModal] = useState<boolean>(false)
@@ -149,8 +151,8 @@ export default function PlayGamePage() {
           </p>
         </div>
 
-        {/* 3 Game Modes Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+        {/* 4 Game Modes Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
           {/* 1. Classic Endless */}
           <button
             onClick={() => setSelectedMode('classic')}
@@ -257,6 +259,47 @@ export default function PlayGamePage() {
               ) : (
                 <span className="text-amber-400">DAILY SEED</span>
               )}
+            </div>
+          </button>
+
+          {/* 4. BIO-WAR 30 (30-Player IO Battle Arena) */}
+          <button
+            onClick={() => setSelectedMode('biowar')}
+            className="group glass-panel rounded-2xl p-6 border border-rose-500/50 hover:border-rose-400 hover:-translate-y-1.5 transition-all duration-300 hover:shadow-[0_0_40px_rgba(244,63,94,0.4)] text-left cursor-pointer flex flex-col justify-between bg-rose-950/25 relative overflow-hidden"
+          >
+            {/* Top pulsing accent line */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 via-amber-400 to-rose-500 animate-pulse" />
+
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3.5 rounded-xl bg-rose-500/20 text-rose-400 group-hover:scale-110 transition-transform w-fit">
+                  <Skull className="h-7 w-7 text-rose-400" />
+                </div>
+
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px] font-mono font-bold tracking-wider">
+                  <Crown className="h-3 w-3 text-amber-400 animate-bounce" />
+                  30 {isUz ? "O'YINCHI" : 'PLAYERS'}
+                </span>
+              </div>
+
+              <h2 className="text-2xl font-mono font-bold text-white group-hover:text-rose-400 transition-colors flex items-center gap-2">
+                <span>BIO-WAR 30</span>
+              </h2>
+
+              <p className="text-xs font-mono text-rose-300/90 mt-1 font-bold">
+                🐍 SNAKE + SHOOTER IO
+              </p>
+
+              <p className="text-xs font-mono text-slate-400 mt-2 leading-relaxed">
+                {isUz
+                  ? "Biomassa yeb o'sing, kiber-dumingiz bilan raqiblarni to'sing va xaritaning 1-raqamli Qiroliga aylaning!"
+                  : "Consume biomass, grow your bio-tail, cut off rival snakes and become the Apex King!"}
+              </p>
+            </div>
+
+            <div className="mt-6 text-xs font-mono text-rose-400 font-bold tracking-wider flex items-center justify-between">
+              <span>BATTLE ROYALE</span>
+              <span className="text-[10px] text-amber-400 font-bold">TOP 1 CROWN</span>
             </div>
           </button>
         </div>

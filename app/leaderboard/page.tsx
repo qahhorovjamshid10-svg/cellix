@@ -34,7 +34,7 @@ export default function LeaderboardPage() {
     { id: 'level', label: t('catLevel'), icon: TrendingUp, color: 'text-purple-400' },
   ]
 
-  const [modeFilter, setModeFilter] = useState<'all' | 'classic' | 'survival' | 'daily'>('all')
+  const [modeFilter, setModeFilter] = useState<'all' | 'classic' | 'survival' | 'daily' | 'biowar'>('all')
 
   useEffect(() => {
     const modeQuery = modeFilter !== 'all' ? `&gameMode=${modeFilter}` : ''
@@ -105,21 +105,23 @@ export default function LeaderboardPage() {
         </div>
 
         {/* Mode Filters */}
-        <div className="flex items-center justify-center gap-2">
-          {(['all', 'classic', 'survival', 'daily'] as const).map((m) => (
+        <div className="flex items-center justify-center gap-2 overflow-x-auto pb-1">
+          {(['all', 'classic', 'survival', 'daily', 'biowar'] as const).map((m) => (
             <button
               key={m}
               onClick={() => {
                 setLoading(true)
                 setModeFilter(m)
               }}
-              className={`px-3 py-1 rounded-lg font-mono text-[11px] font-bold uppercase transition-all border cursor-pointer ${
+              className={`px-3 py-1 rounded-lg font-mono text-[11px] font-bold uppercase transition-all border cursor-pointer shrink-0 ${
                 modeFilter === m
-                  ? 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-[0_0_10px_rgba(0,240,255,0.3)]'
+                  ? m === 'biowar'
+                    ? 'bg-rose-950 border-rose-500 text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                    : 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-[0_0_10px_rgba(0,240,255,0.3)]'
                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
-              {m === 'all' ? 'ALL MODES' : m}
+              {m === 'all' ? 'ALL MODES' : m === 'biowar' ? '⚔️ BIO-WAR 30' : m}
             </button>
           ))}
         </div>
@@ -138,6 +140,13 @@ export default function LeaderboardPage() {
           <div className="space-y-2">
             {highScores.map((item, index) => {
               const rank = index + 1
+              const isBioWar = item.gameMode === 'biowar'
+              const bioTier =
+                item.score >= 6000 ? '👑 TITAN LEVIATHAN'
+                : item.score >= 2500 ? '🥇 APEX PREDATOR'
+                : item.score >= 500 ? '🥈 KIBER-VIPER'
+                : '🥉 PLANKTON'
+
               const rankStyle =
                 rank === 1 ? 'text-amber-400 border-amber-500/60 bg-amber-950/40 shadow-[0_0_15px_rgba(255,183,0,0.3)]'
                 : rank === 2 ? 'text-slate-300 border-slate-400/40 bg-slate-900/60'
@@ -153,12 +162,28 @@ export default function LeaderboardPage() {
                       {rank === 1 ? <Crown className="h-5 w-5 text-amber-400" /> : `#${rank}`}
                     </div>
                     <div>
-                      <Link href={`/profile/${item.player?.id}`} className="font-mono text-base font-bold text-white hover:text-purple-400 transition-colors">
-                        {item.player?.username || 'Anonymous'}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        {item.id.startsWith('bw_apex_') ? (
+                          <span className="font-mono text-base font-bold text-slate-100 flex items-center gap-1.5">
+                            <span>{item.player?.username || 'Anonymous'}</span>
+                            <span className="text-[9px] px-1 rounded bg-slate-800 border border-slate-700 text-cyan-400 font-mono">
+                              APEX BOT
+                            </span>
+                          </span>
+                        ) : (
+                          <Link href={`/profile/${item.player?.id}`} className="font-mono text-base font-bold text-white hover:text-purple-400 transition-colors">
+                            {item.player?.username || 'Anonymous'}
+                          </Link>
+                        )}
+                        {isBioWar && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono font-bold">
+                            {bioTier}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3 text-xs font-mono text-slate-400 mt-0.5">
                         <span>Score: <span className="text-purple-300 font-bold">{item.score.toLocaleString()}</span></span>
-                        <span>Lv.{item.level}</span>
+                        <span>{isBioWar ? `Mass: ${item.level * 50}` : `Lv.${item.level}`}</span>
                         <span>{item.kills} kills</span>
                       </div>
                     </div>

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Phaser from 'phaser'
 import MainScene, { GameHUDData, MainSceneConfig } from '@/lib/game/engine/MainScene'
 import SurvivalScene, { SurvivalSceneConfig } from '@/lib/game/engine/SurvivalScene'
-import { getSelectedSkinId } from '@/lib/game/cosmetics'
+import BioWarScene, { BioWarHUDData, BioWarSceneConfig } from '@/lib/game/engine/BioWarScene'
+import BioWarHUD from './BioWarHUD'
+import { getSelectedSkinId, syncCoinBalance } from '@/lib/game/cosmetics'
 import MutationOverlay from './MutationOverlay'
 import GameOverModal from './GameOverModal'
 import PauseOverlay from './PauseOverlay'
@@ -13,16 +15,18 @@ import { soundManager } from '@/lib/game/engine/SoundManager'
 import { MutationDefinition, getRandomMutationOptions } from '@/lib/game/mutations'
 import { getActiveCombos } from '@/lib/game/combos'
 import { getDailyChallenge } from '@/lib/game/daily'
-import { Volume2, VolumeX, Heart, Zap, Biohazard, Pause, Shield, Bomb, Crosshair, Sparkles } from 'lucide-react'
+import { Volume2, VolumeX, Heart, Zap, Biohazard, Pause, Shield, Bomb, Crosshair, Sparkles, RotateCcw } from 'lucide-react'
 
-type GameScene = MainScene | SurvivalScene
-type GameSceneConfig = MainSceneConfig | SurvivalSceneConfig
-type GameMode = 'classic' | 'survival' | 'daily'
+type GameScene = MainScene | SurvivalScene | BioWarScene
+type GameSceneConfig = MainSceneConfig | SurvivalSceneConfig | BioWarSceneConfig
+type GameMode = 'classic' | 'survival' | 'daily' | 'biowar'
 
 function getSceneKey(gameMode: GameMode) {
   switch (gameMode) {
     case 'survival':
       return 'SurvivalScene'
+    case 'biowar':
+      return 'BioWarScene'
     default:
       return 'MainScene'
   }
@@ -84,6 +88,19 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
   const [currentLevel, setCurrentLevel] = useState(1)
   const [activeMutations, setActiveMutations] = useState<MutationDefinition[]>([])
   const [runToken, setRunToken] = useState<string | null>(null)
+  const [bioWarHud, setBioWarHud] = useState<BioWarHUDData>({
+    myMass: 25,
+    myKills: 0,
+    myRank: 1,
+    totalPlayers: 16,
+    boostPct: 1,
+    leaderboard: [],
+    killFeed: [],
+    radar: [],
+    isDead: false,
+    roundTimeRemaining: 600,
+    roundNumber: 1,
+  })
   const [gameOverMetrics, setGameOverMetrics] = useState<{
     score: number
     level: number
@@ -113,12 +130,88 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
   )
   const activeCombos = getActiveCombos(activeMutations)
   const [showControlsHint, setShowControlsHint] = useState(true)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+  const [isPortrait, setIsPortrait] = useState(false)
+  const [dismissOrientationPrompt, setDismissOrientationPrompt] = useState(false)
+  const [playerName, setPlayerName] = useState<string>('SIZ')
 
-  // 20-second auto-fade for controls hint, with 'H' toggle
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.player?.username) {
+          setPlayerName(data.player.username)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Strictly detect mobile devices (never show joysticks or orientation prompt on PC!)
+  useEffect(() => {
+    const checkOrientation = () => {
+      if (typeof window === 'undefined') return
+      const ua = navigator.userAgent || ''
+      const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+      const isIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+      const isTouchOnly =
+        window.matchMedia('(pointer: coarse)').matches &&
+        !window.matchMedia('(pointer: fine)').matches &&
+        window.innerWidth <= 1024
+
+      const isMobile = isMobileUA || isIPad || isTouchOnly
+      setIsTouchDevice(isMobile)
+
+      const portrait = isMobile && window.innerHeight > window.innerWidth
+      setIsPortrait(portrait)
+
+      if (gameRef.current) {
+        gameRef.current.scale.resize(window.innerWidth, window.innerHeight)
+      }
+    }
+
+    checkOrientation()
+    window.addEventListener('resize', checkOrientation)
+    window.addEventListener('orientationchange', checkOrientation)
+    const orientationObj = (window.screen as any)?.orientation
+    if (orientationObj && 'addEventListener' in orientationObj) {
+      orientationObj.addEventListener('change', checkOrientation)
+    }
+
+    // Attempt to lock landscape orientation on mobile devices
+    try {
+      if (orientationObj && 'lock' in orientationObj) {
+        void orientationObj.lock('landscape').catch(() => {})
+      }
+    } catch {}
+
+    return () => {
+      window.removeEventListener('resize', checkOrientation)
+      window.removeEventListener('orientationchange', checkOrientation)
+      if (orientationObj && 'removeEventListener' in orientationObj) {
+        orientationObj.removeEventListener('change', checkOrientation)
+      }
+    }
+  }, [])
+
+  const handleRotateOrFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch {}
+    try {
+      const orientationObj = (window.screen as any)?.orientation
+      if (orientationObj && 'lock' in orientationObj) {
+        await orientationObj.lock('landscape')
+      }
+    } catch {}
+  }
+
+  // 5-second auto-fade for controls hint, with 'H' toggle
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowControlsHint(false)
-    }, 20000)
+    }, 5000)
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'h' || e.key === 'H') {
@@ -206,6 +299,9 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
         if (gameMode === 'survival') {
           sceneKey = 'SurvivalScene'
           sceneInstance = new SurvivalScene()
+        } else if (gameMode === 'biowar') {
+          sceneKey = 'BioWarScene'
+          sceneInstance = new BioWarScene()
         }
 
         game.scene.add(sceneKey, sceneInstance, false)
@@ -257,6 +353,49 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
               }
             : {}),
           ...(dailyChallenge ? { challenge: dailyChallenge } : {}),
+          ...(gameMode === 'biowar'
+            ? {
+                playerName,
+                onBioWarUpdate: (data: BioWarHUDData) => {
+                  setBioWarHud(data)
+                },
+                onGameOver: async (metrics: {
+                  score: number
+                  level: number
+                  kills: number
+                  survivalTime: number
+                  mutationsCount: number
+                  damageDealt: number
+                  damageTaken: number
+                  criticalHits: number
+                  bossDefeated: boolean
+                }) => {
+                  if (runTokenRef.current) {
+                    try {
+                      const res = await fetch('/api/game/score', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          ...metrics,
+                          gameMode: 'biowar',
+                          token: runTokenRef.current,
+                        }),
+                      })
+                      const json = await res.json()
+                      if (json.totalCoins !== undefined) {
+                        syncCoinBalance(json.totalCoins)
+                      }
+                      // Fetch next fresh runToken for respawn
+                      const nextToken = await requestRunToken('biowar')
+                      setRunToken(nextToken)
+                      runTokenRef.current = nextToken
+                    } catch (e) {
+                      console.error('BioWar score save error:', e)
+                    }
+                  }
+                },
+              }
+            : {}),
           initialSkin,
         } as GameSceneConfig
 
@@ -286,8 +425,8 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
       activeMutationsRef.current = next
       return next
     })
-    if (sceneRef.current) {
-      sceneRef.current.applyChosenMutation(mutation)
+    if (sceneRef.current && 'applyChosenMutation' in sceneRef.current) {
+      (sceneRef.current as MainScene | SurvivalScene).applyChosenMutation(mutation)
     }
   }
 
@@ -320,8 +459,85 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
       {/* Phaser Canvas Mount Node */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Cyberpunk HUD Overlay */}
-      <div className="absolute inset-0 pointer-events-none z-20 p-4 sm:p-6 flex flex-col justify-between">
+      {/* Cyberpunk Mobile Landscape Orientation Prompt Overlay */}
+      {isPortrait && !dismissOrientationPrompt && (
+        <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
+          <div className="relative mb-6">
+            {/* Animated 90-degree rotating phone */}
+            <div className="w-20 h-36 border-4 border-cyan-400/80 rounded-2xl flex flex-col items-center justify-between p-2.5 shadow-[0_0_35px_rgba(6,182,212,0.4)] animate-pulse">
+              <div className="w-8 h-1 bg-cyan-400/60 rounded-full" />
+              <div className="flex flex-col items-center gap-1.5">
+                <RotateCcw className="h-9 w-9 text-cyan-400 animate-spin" style={{ animationDuration: '3.5s' }} />
+                <span className="text-[10px] font-mono text-cyan-300 font-bold tracking-wider">90° BURISH</span>
+              </div>
+              <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 rounded-full" />
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-cyan-500/40 bg-cyan-950/60 text-cyan-300 text-[11px] font-mono font-bold tracking-widest uppercase mb-3 shadow-[0_0_20px_rgba(6,182,212,0.3)] animate-pulse">
+            <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+            <span>GORIZONTAL REJIM TALAB QILINADI</span>
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-black font-mono tracking-wide text-white uppercase mb-2">
+            📲 EKRANNI YOTIQ HOLATGA BURING
+          </h2>
+
+          <p className="text-xs sm:text-sm font-mono text-slate-300 max-w-sm leading-relaxed mb-6">
+            CELLIX barcha o‘yin rejimlari (<strong className="text-cyan-400">Klassik</strong>, <strong className="text-purple-400">Survival</strong>, <strong className="text-amber-400">Kunlik</strong> va <strong className="text-rose-400">Bio-War</strong>) smartfoningiz yotiq (landscape) holatida maksimal ko‘rish maydoni va 2 qo‘lli qulay boshqaruv uchun maxsus moslangan!
+          </p>
+
+          <button
+            type="button"
+            onClick={handleRotateOrFullscreen}
+            className="btn-cyber-primary px-6 py-3.5 rounded-xl font-mono text-xs sm:text-sm font-bold text-slate-950 flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,240,255,0.4)] active:scale-95 transition-all cursor-pointer"
+          >
+            <RotateCcw className="h-4 w-4" />
+            <span>TO‘LIQ EKRAN & GORIZONTAL REJIM</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDismissOrientationPrompt(true)}
+            className="mt-4 text-[11px] font-mono text-slate-500 hover:text-slate-300 underline underline-offset-4 cursor-pointer"
+          >
+            Baribir vertikal o‘ynash (tavsiya etilmaydi)
+          </button>
+        </div>
+      )}
+
+      {gameMode === 'biowar' ? (
+        <BioWarHUD
+          hud={bioWarHud}
+          onRespawn={() => {
+            const bioScene = sceneRef.current as BioWarScene | null
+            bioScene?.respawnPlayer?.()
+          }}
+          onExit={async () => {
+            const bioScene = sceneRef.current as BioWarScene | null
+            if (bioScene?.saveAndEndCurrentRun) {
+              await bioScene.saveAndEndCurrentRun()
+            }
+            window.location.href = '/game'
+          }}
+          onSteerAngle={(angle) => {
+            const bioScene = sceneRef.current as BioWarScene | null
+            bioScene?.setMobileSteer?.(angle)
+          }}
+          onBoostChange={(b) => {
+            const bioScene = sceneRef.current as BioWarScene | null
+            bioScene?.setMobileBoosting?.(b)
+          }}
+          onShootChange={(s) => {
+            const bioScene = sceneRef.current as BioWarScene | null
+            bioScene?.setMobileShooting?.(s)
+          }}
+          isUz={true}
+        />
+      ) : (
+        <>
+          {/* Cyberpunk HUD Overlay */}
+          <div className="absolute inset-0 pointer-events-none z-20 p-4 sm:p-6 flex flex-col justify-between">
         {/* Top HUD Row */}
         <div className="flex items-start justify-between gap-4">
           {/* Top Left: HP Bar & Level */}
@@ -420,7 +636,7 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
         </div>
 
         {/* Bottom Desktop Ability & Combat HUD (Fades out after 20s) */}
-        <div className="hidden sm:flex flex-col items-center justify-center gap-2 pointer-events-auto select-none">
+        <div className={`flex flex-col items-center justify-center gap-2 pointer-events-auto select-none ${isTouchDevice ? 'hidden' : 'hidden sm:flex'}`}>
           <div
             className={`flex flex-col items-center justify-center gap-2 transition-all duration-1000 ease-in-out ${
               showControlsHint ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
@@ -558,19 +774,24 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
       {/* Mobile Virtual Touch Controls */}
       <MobileControls
         onMove={(vec) => {
-          if (sceneRef.current) sceneRef.current.mobileMoveVector = vec
+          const s = sceneRef.current as MainScene | SurvivalScene | null
+          if (s) s.mobileMoveVector = vec
         }}
         onAttack={(target) => {
-          if (sceneRef.current) sceneRef.current.mobileAttackTarget = target
+          const s = sceneRef.current as MainScene | SurvivalScene | null
+          if (s) s.mobileAttackTarget = target
         }}
         onDash={() => {
-          if (sceneRef.current) sceneRef.current.triggerDash(sceneRef.current.time.now)
+          const s = sceneRef.current as MainScene | SurvivalScene | null
+          if (s) s.triggerDash(s.time.now)
         }}
-        onSpecial={() => {
-          if (sceneRef.current) sceneRef.current.triggerSpecialPulse(sceneRef.current.time.now)
+        onSpecial={(dir) => {
+          const s = sceneRef.current as MainScene | SurvivalScene | null
+          if (s) s.triggerSpecialPulse(s.time.now, dir?.x, dir?.y)
         }}
         dashCdPct={hud.dashCooldownPct ?? 1}
         specCdPct={hud.specialCooldownPct ?? 1}
+        forceShow={isTouchDevice}
       />
 
       {/* Level-Up Mutation Selection Card Overlay */}
@@ -598,7 +819,7 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
            criticalHits={gameOverMetrics.criticalHits}
            bossDefeated={gameOverMetrics.bossDefeated}
            combosCount={gameOverMetrics.combosCount}
-           gameMode={gameMode}
+           gameMode={gameMode as 'classic' | 'survival' | 'daily'}
            wave={gameOverMetrics.wave}
            isVictory={gameOverMetrics.isVictory}
           wavesCleared={gameOverMetrics.wavesCleared}
@@ -615,10 +836,12 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
           level={hud.level}
           kills={hud.kills}
           survivalTime={hud.survivalTime}
-          gameMode={gameMode}
+          gameMode={gameMode as 'classic' | 'survival' | 'daily'}
           isMuted={isMuted}
           onToggleSound={handleToggleSound}
         />
+      )}
+        </>
       )}
     </div>
   )

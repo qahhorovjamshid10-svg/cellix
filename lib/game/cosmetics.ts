@@ -227,7 +227,7 @@ export function calculateRunCoinReward(metrics: {
   score: number
   kills: number
   survivalTime: number
-  gameMode: 'classic' | 'survival' | 'daily' | 'practice' | 'multiplayer'
+  gameMode: 'classic' | 'survival' | 'daily' | 'practice' | 'multiplayer' | 'biowar'
 }): number {
   if (metrics.gameMode === 'practice') return 0
 
@@ -235,7 +235,7 @@ export function calculateRunCoinReward(metrics: {
   const scoreReward = Math.min(100, Math.floor(Math.max(0, metrics.score) / 500))
   const killReward = Math.min(80, Math.floor(Math.max(0, metrics.kills) / 2))
   const survivalReward = Math.min(80, Math.floor(Math.max(0, metrics.survivalTime) / 30))
-  const modeBonus = metrics.gameMode === 'survival' ? 15 : metrics.gameMode === 'daily' ? 10 : 0
+  const modeBonus = metrics.gameMode === 'survival' ? 15 : metrics.gameMode === 'daily' ? 10 : metrics.gameMode === 'biowar' ? 20 : 0
 
   return baseReward + scoreReward + killReward + survivalReward + modeBonus
 }

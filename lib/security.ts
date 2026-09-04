@@ -105,7 +105,7 @@ export function validateScoreSubmission(metrics: {
   // Anti-cheat density checks (Daily mode modifiers can give 2x score, higher spawn density, etc.)
   if (survivalTime > 0) {
     const pointsPerSec = score / survivalTime
-    const maxPointsPerSec = gameMode === 'daily' ? 1500 : 900
+    const maxPointsPerSec = gameMode === 'daily' || gameMode === 'biowar' ? 1500 : 900
     if (pointsPerSec > maxPointsPerSec) {
       return { valid: false, reason: `Impossible score accumulation rate (>${maxPointsPerSec} pts/sec)` }
     }

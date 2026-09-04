@@ -148,6 +148,7 @@ export default class SurvivalScene extends Phaser.Scene {
     R: Phaser.Input.Keyboard.Key
     F: Phaser.Input.Keyboard.Key
     SHIFT: Phaser.Input.Keyboard.Key
+    ENTER?: Phaser.Input.Keyboard.Key
   }
 
   // Virtual Joystick input vectors from mobile overlay
@@ -507,7 +508,13 @@ export default class SurvivalScene extends Phaser.Scene {
       (Phaser.Input.Keyboard.JustDown(this.wasd?.E) || Phaser.Input.Keyboard.JustDown(this.cursors.shift)) &&
       time > this.lastSpecialTime + this.specialCooldown
     ) {
-      this.triggerSpecialPulse(time)
+      let dirX = 0
+      let dirY = 0
+      if (this.cursors.right.isDown || this.wasd?.D.isDown) dirX += 1
+      if (this.cursors.left.isDown || this.wasd?.A.isDown) dirX -= 1
+      if (this.cursors.up.isDown || this.wasd?.W.isDown) dirY -= 1
+      if (this.cursors.down.isDown || this.wasd?.S.isDown) dirY += 1
+      this.triggerSpecialPulse(time, dirX, dirY)
     }
 
     // F key - cycle fire mode
@@ -573,9 +580,9 @@ export default class SurvivalScene extends Phaser.Scene {
             targetX = this.player.x + this.mobileAttackTarget.x
             targetY = this.player.y + this.mobileAttackTarget.y
           }
-          // Rotate player toward aim target on mobile
-          const mobileAimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
-          this.player.setRotation(mobileAimAngle)
+          // Rotate player toward aim target
+          const aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+          this.player.setRotation(aimAngle)
         }
 
         this.fireByMode(targetX, targetY)
@@ -811,11 +818,56 @@ export default class SurvivalScene extends Phaser.Scene {
     })
   }
 
-  public triggerSpecialPulse(time: number) {
+  public triggerSpecialPulse(time: number, dirX = 0, dirY = 0) {
     this.lastSpecialTime = time
     soundManager.playExplosion()
     this.cameras.main.shake(SPECIAL_VISUALS.shakeDuration, SPECIAL_VISUALS.shakeIntensity)
 
+    // Directional Beam (O'ng, Chap, Tepa, Past) or 4-Way Cross Blast (+)
+    const directions: { dx: number; dy: number }[] = []
+    if (dirX !== 0 || dirY !== 0) {
+      const len = Math.hypot(dirX, dirY) || 1
+      directions.push({ dx: dirX / len, dy: dirY / len })
+    } else {
+      // 4-Way Cardinal Cross Blast: O'ng (Right), Chap (Left), Tepa (Up), Past (Down)
+      directions.push({ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: -1 }, { dx: 0, dy: 1 })
+    }
+
+    const beamLength = 480
+    directions.forEach(({ dx, dy }) => {
+      const beamEnd = {
+        x: this.player.x + dx * beamLength,
+        y: this.player.y + dy * beamLength,
+      }
+      const beamLine = this.add
+        .line(0, 0, this.player.x, this.player.y, beamEnd.x, beamEnd.y, 0x00f0ff)
+        .setOrigin(0, 0)
+        .setLineWidth(6, 6)
+
+      this.tweens.add({
+        targets: beamLine,
+        alpha: 0,
+        duration: 350,
+        onComplete: () => beamLine.destroy(),
+      })
+
+      // Damage enemies along each beam ray
+      this.enemies.getChildren().forEach((enemyObj) => {
+        if (!enemyObj.active) return
+        const enemy = enemyObj as Phaser.Physics.Arcade.Sprite
+        const px = enemy.x - this.player.x
+        const py = enemy.y - this.player.y
+        const proj = px * dx + py * dy
+        if (proj > 0 && proj < beamLength) {
+          const perpDist = Math.abs(px * -dy + py * dx)
+          if (perpDist < 48) {
+            this.damageEnemy(enemy, this.playerDamage * PLAYER.specialDamageMult * 1.35)
+          }
+        }
+      })
+    })
+
+    // Radial shockwave ring
     const ring = this.add.circle(this.player.x, this.player.y, SPECIAL_VISUALS.ringStartRadius, 0x00f0ff, 0.6)
     this.tweens.add({
       targets: ring,
@@ -1381,6 +1433,7 @@ export default class SurvivalScene extends Phaser.Scene {
     }
 
     this.damageEnemy(enemyObj, dmg)
+
     if (this.hasToxinTrail) {
       this.spawnToxinCloud(enemyObj.x, enemyObj.y)
     }
@@ -1419,15 +1472,8 @@ export default class SurvivalScene extends Phaser.Scene {
     this.damagePlayer(COLLISION.enemyProjectile)
   }
 
-  private handlePlayerXpGemOverlap(
-    playerObj: Phaser.Physics.Arcade.Sprite,
-    gemObj: Phaser.Physics.Arcade.Sprite
-  ) {
-    if (!gemObj.active) return
-    const val = (gemObj.getData('val') || 20) * this.xpMultiplier
-    gemObj.destroy()
-
-    soundManager.playPickup()
+  private addPlayerXp(amount: number) {
+    const val = amount * this.xpMultiplier
     this.playerXp += val
     this.score += val * SCORING.gemPickupMult
 
@@ -1438,6 +1484,18 @@ export default class SurvivalScene extends Phaser.Scene {
       this.nextLevelXp = result.newNextLevelXp
       this.queueLevelUps(result.levelsGained, this.playerLevel - result.levelsGained + 1)
     }
+  }
+
+  private handlePlayerXpGemOverlap(
+    playerObj: Phaser.Physics.Arcade.Sprite,
+    gemObj: Phaser.Physics.Arcade.Sprite
+  ) {
+    if (!gemObj.active) return
+    const val = (gemObj.getData('val') || 20)
+    gemObj.destroy()
+
+    soundManager.playPickup()
+    this.addPlayerXp(val)
   }
 
   private spawnXpGem(x: number, y: number, value = 20) {

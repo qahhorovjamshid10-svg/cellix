@@ -11,7 +11,7 @@ import {
 import { getCellLevelForXp, getRunProgressionXp } from '@/lib/game/progression'
 import { calculateRunCoinReward } from '@/lib/game/cosmetics'
 
-const GAME_MODES = ['classic', 'survival', 'daily'] as const
+const GAME_MODES = ['classic', 'survival', 'daily', 'biowar'] as const
 type GameMode = (typeof GAME_MODES)[number]
 
 function readBoundedInteger(
