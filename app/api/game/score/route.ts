@@ -148,11 +148,15 @@ export async function POST(req: Request) {
       player = await prisma.player.findUnique({ where: { id: playerId } })
     }
 
-    const trimmedUsername = player?.username || 'Anonymous'
-
     if (!player) {
+      // Create unique guest player so unique constraint on username never fails
+      const suffix = Math.random().toString(36).substring(2, 7)
       player = await prisma.player.create({
-        data: { username: trimmedUsername },
+        data: {
+          username: `Guest_${suffix}`,
+          bio: 'CELLIX Arena Guest',
+          coins: 0,
+        },
       })
     }
 

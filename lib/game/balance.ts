@@ -43,6 +43,84 @@ export const PLAYER: PlayerBaseStats = {
   hitboxRadius: 14,
 }
 
+// ─── COMBAT ABILITIES ────────────────────────────────────────
+
+export const HEAVY_SHOT = {
+  cooldown: 800,
+  damageMult: 3,
+  speed: 350,
+  hitboxRadius: 8,
+  lifetime: 2500,
+}
+
+export const CHARGED_SHOT = {
+  /** Time in ms to reach max charge */
+  maxChargeTime: 1500,
+  /** Damage multiplier at max charge */
+  maxDamageMult: 3,
+  /** Whether the projectile pierces at max charge */
+  pierceAtMax: true,
+  /** Speed multiplier at max charge */
+  maxSpeedMult: 1.5,
+  /** Visual ring start radius */
+  chargeRingRadius: 20,
+}
+
+export const BURST_FIRE = {
+  /** Number of shots in a burst */
+  count: 3,
+  /** Delay between burst shots in ms */
+  delay: 60,
+  /** Cooldown between bursts in ms */
+  cooldown: 400,
+}
+
+export const SPREAD_SHOT = {
+  /** Number of projectiles per shot */
+  count: 5,
+  /** Angle spread in radians */
+  spreadAngle: 0.5,
+  /** Cooldown between spread shots */
+  cooldown: 350,
+  /** Damage multiplier per projectile (lower since there are many) */
+  damageMult: 0.5,
+}
+
+export const SNIPER_SHOT = {
+  cooldown: 600,
+  damageMult: 2.5,
+  speed: 600,
+  hitboxRadius: 4,
+  lifetime: 3000,
+}
+
+export const SHIELD_BUBBLE = {
+  cooldown: 12000,
+  duration: 2000,
+  radius: 60,
+  color: 0x06b6d4,
+}
+
+export const GRENADE = {
+  cooldown: 10000,
+  damage: 80,
+  radius: 120,
+  speed: 400,
+  fuseTime: 600,
+  color: 0xff6b00,
+}
+
+export const PARRY = {
+  cooldown: 5000,
+  activeWindow: 300,
+  perfectWindow: 150,
+  reflectDamageMult: 2,
+  color: 0xfbbf24,
+}
+
+export const FIRE_MODES = ['auto', 'burst', 'spread', 'sniper'] as const
+export type FireMode = (typeof FIRE_MODES)[number]
+
 // ─── ENEMIES ─────────────────────────────────────────────────
 
 export const ENEMIES: Record<EnemyTypeId, EnemyConfig> = {

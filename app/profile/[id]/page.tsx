@@ -89,19 +89,26 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     const ownerCookie = document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null
 
     if (id === 'me') {
-      if (ownerCookie) {
-        targetId = ownerCookie
-      } else {
+      if (!ownerCookie) {
         window.location.href = '/auth'
         return
       }
+      targetId = 'me'
     }
 
     fetch(`/api/profile/${targetId}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data: ProfileResponse | { error?: string }) => {
+      .then((res) => {
+        if (res.status === 401) {
+          document.cookie = 'virus_player_id=; path=/; max-age=0'
+          window.location.href = '/auth'
+          return null
+        }
+        return res.json()
+      })
+      .then((data: ProfileResponse | { error?: string } | null) => {
+        if (!data) return
         if (isProfileResponse(data)) {
-          const profileIsOwner = !!ownerCookie && ownerCookie === data.player.id
+          const profileIsOwner = !!ownerCookie && (ownerCookie === data.player.id || id === 'me')
 
           setIsOwner(profileIsOwner)
 
@@ -130,6 +137,9 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             avatarColor: data.player.avatarColor || '#b026ff',
           })
         } else {
+          if (id === 'me' || targetId === ownerCookie) {
+            document.cookie = 'virus_player_id=; path=/; max-age=0'
+          }
           setError(data.error || t('profileNotFound'))
         }
       })
@@ -244,13 +254,22 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
 
   if (error || !profileData) {
     return (
-      <div className="min-h-screen bg-[#060620] text-white flex flex-col items-center justify-center space-y-4 p-4 text-center">
+      <div className="min-h-screen bg-[#060620] text-white flex flex-col items-center justify-center space-y-4 p-4 text-center selection:bg-purple-500/30 selection:text-white">
         <ShieldAlert className="h-12 w-12 text-rose-500" />
         <h2 className="text-xl font-mono font-bold">{error || t('profileNotFound')}</h2>
-        <p className="text-sm font-mono text-slate-400">{t('profilePlayFirst')}</p>
-        <Link href="/game" className="btn-cyber-primary px-6 py-2 rounded-xl text-xs font-mono font-bold uppercase mt-4">
-          {t('hubEnter')}
-        </Link>
+        <p className="text-sm font-mono text-slate-400 max-w-md">
+          {isUz
+            ? 'Siz hali tizimga kirmagansiz yoki sessiya eskirgan. Profilingizni ko‘rish uchun hisobingizga kiring.'
+            : 'You are not logged in or your session has expired. Please sign in to view your profile.'}
+        </p>
+        <div className="flex items-center gap-3 mt-4">
+          <Link href="/auth" className="btn-cyber-primary px-6 py-2.5 rounded-xl text-xs font-mono font-bold uppercase">
+            {isUz ? 'TIZIMGA KIRISH (LOGIN)' : 'SIGN IN / REGISTER'}
+          </Link>
+          <Link href="/game" className="px-6 py-2.5 rounded-xl text-xs font-mono font-bold uppercase border border-slate-700 hover:border-purple-400 text-slate-300">
+            {t('hubEnter')}
+          </Link>
+        </div>
       </div>
     )
   }

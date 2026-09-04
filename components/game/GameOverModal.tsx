@@ -133,8 +133,18 @@ export default function GameOverModal({
           }),
         })
 
-        if (!response.ok) throw new Error('Score submission failed')
-        const data = (await response.json()) as { coinReward?: unknown; coinBalance?: unknown }
+        const data = (await response.json().catch(() => ({}))) as {
+          coinReward?: unknown
+          coinBalance?: unknown
+          error?: string
+        }
+
+        if (!response.ok) {
+          console.error('Score submission failed from server:', data.error || response.statusText)
+          setSaveState('failed')
+          return
+        }
+
         if (typeof data.coinBalance === 'number') syncCoinBalance(data.coinBalance)
         setCoinsEarned(typeof data.coinReward === 'number' ? data.coinReward : 0)
         setSaveState('saved')

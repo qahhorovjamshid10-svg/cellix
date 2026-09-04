@@ -15,7 +15,7 @@ import { soundManager } from '@/lib/game/engine/SoundManager'
 import { MutationDefinition, getRandomMutationOptions } from '@/lib/game/mutations'
 import { getActiveCombos } from '@/lib/game/combos'
 import { getDailyChallenge } from '@/lib/game/daily'
-import { Volume2, VolumeX, Heart, Zap, Biohazard, Pause } from 'lucide-react'
+import { Volume2, VolumeX, Heart, Zap, Biohazard, Pause, Shield, Bomb, Crosshair, Sparkles } from 'lucide-react'
 
 type GameScene = MainScene | SurvivalScene | PracticeScene | MultiplayerScene
 type GameSceneConfig = MainSceneConfig | SurvivalSceneConfig | PracticeSceneConfig | MultiplayerSceneConfig
@@ -106,6 +106,26 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
     [gameMode]
   )
   const activeCombos = getActiveCombos(activeMutations)
+  const [showControlsHint, setShowControlsHint] = useState(true)
+
+  // 20-second auto-fade for controls hint, with 'H' toggle
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowControlsHint(false)
+    }, 20000)
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'h' || e.key === 'H') {
+        setShowControlsHint((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
   useEffect(() => {
     banishedIdsRef.current = banishedIds
@@ -211,7 +231,12 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
             if (!lastHudUpdateRef.current) lastHudUpdateRef.current = now
             const prevHp = lastHudDataRef.current?.hp ?? data.maxHp
             const hpChangedSignificant = Math.abs(data.hp - prevHp) > (data.maxHp * 0.05)
-            if (now - lastHudUpdateRef.current > 250 || hpChangedSignificant || data.hp === 0) {
+            const combatStateChanged =
+              data.isCharging !== lastHudDataRef.current?.isCharging ||
+              data.fireMode !== lastHudDataRef.current?.fireMode ||
+              data.shieldActive !== lastHudDataRef.current?.shieldActive ||
+              Boolean(data.isCharging && Math.abs((data.chargeLevel || 0) - (lastHudDataRef.current?.chargeLevel || 0)) > 0.05)
+            if (now - lastHudUpdateRef.current > 100 || hpChangedSignificant || combatStateChanged || data.hp === 0) {
               setHud(data)
               lastHudUpdateRef.current = now
               lastHudDataRef.current = data
@@ -395,29 +420,139 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
           </div>
         </div>
 
-        {/* Bottom Desktop Ability Cooldown Indicators */}
-        <div className="hidden sm:flex items-center justify-center gap-4 pointer-events-auto">
-          <div className="glass-panel px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 flex items-center gap-2">
-            <span>WASD: MOVE</span>
-          </div>
-          <div className="glass-panel px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 flex items-center gap-2">
-            <span>ARROWS: SHOOT</span>
-          </div>
-          <div className="glass-panel px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 flex items-center gap-2">
-            <Zap className={`h-4 w-4 ${(hud.dashCooldownPct ?? 1) >= 1 ? 'text-purple-400' : 'text-slate-600'}`} />
-            <span>SPACE: DASH</span>
-            {(hud.dashCooldownPct ?? 1) < 1 && (
-              <span className="text-[10px] text-slate-500">({Math.round((hud.dashCooldownPct ?? 1) * 100)}%)</span>
-            )}
+        {/* Bottom Desktop Ability & Combat HUD (Fades out after 20s) */}
+        <div className="hidden sm:flex flex-col items-center justify-center gap-2 pointer-events-auto select-none">
+          <div
+            className={`flex flex-col items-center justify-center gap-2 transition-all duration-1000 ease-in-out ${
+              showControlsHint ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+            }`}
+          >
+            {/* Top Row: Fire Modes & Mouse / Arrow shooting info */}
+            <div className="flex items-center gap-2">
+              {/* Fire Mode Switcher Indicator */}
+              <div className="glass-panel px-3 py-1.5 rounded-xl border border-cyan-500/40 bg-slate-950/85 font-mono text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+                <span className="text-[10px] text-cyan-400 font-bold tracking-wider">[F / SCROLL]</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-white font-extrabold uppercase tracking-wide flex items-center gap-1.5">
+                  <Crosshair className="h-3.5 w-3.5 text-cyan-400" />
+                  REJIM: <span className="text-cyan-300 underline underline-offset-2">{hud.fireMode || 'AUTO'}</span>
+                </span>
+              </div>
+
+              {/* LMB: Shoot & Charge Indicator */}
+              <div className={`glass-panel px-3 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-2 transition-all ${
+                hud.isCharging
+                  ? 'border-amber-400 bg-amber-950/70 shadow-[0_0_20px_rgba(251,191,36,0.3)]'
+                  : 'border-slate-800 bg-slate-950/80 text-slate-300'
+              }`}>
+                <span className="text-[10px] text-amber-400 font-bold">[LMB]</span>
+                {hud.isCharging ? (
+                  <span className="text-amber-300 font-bold flex items-center gap-1.5 animate-pulse">
+                    ⚡ ZARYAD: {Math.round((hud.chargeLevel || 0) * 100)}%
+                  </span>
+                ) : (
+                  <span>OTISH <span className="text-[10px] text-slate-500">(BOSIB TURING: ZARYAD)</span></span>
+                )}
+              </div>
+
+              {/* RMB: Heavy Shot */}
+              <div className="glass-panel px-3 py-1.5 rounded-xl border border-rose-500/30 bg-slate-950/80 font-mono text-xs flex items-center gap-2 text-slate-300">
+                <span className="text-[10px] text-rose-400 font-bold">[RMB]</span>
+                <span>KUCHLI O'Q <span className="text-[10px] text-rose-400/80">(3X ZARAR)</span></span>
+              </div>
+
+              {/* Arrow Keys Shoot */}
+              <div className="glass-panel px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-950/80 font-mono text-xs flex items-center gap-1.5 text-slate-400">
+                <span className="text-[10px] text-purple-400 font-bold">[↑↓←→]</span>
+                <span>YO'NALISH BO'YICHA OTISH</span>
+              </div>
+            </div>
+
+            {/* Bottom Row: Abilities & Cooldowns */}
+            <div className="flex items-center gap-2.5">
+              {/* WASD Move */}
+              <div className="glass-panel px-3 py-1.5 rounded-xl border border-slate-800 font-mono text-xs text-slate-400 flex items-center gap-1.5">
+                <span className="text-cyan-400 font-bold text-[10px]">[WASD]</span>
+                <span>YURISH</span>
+              </div>
+
+              {/* Space: Dash */}
+              <div className={`glass-panel px-3 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-1.5 transition-all ${
+                (hud.dashCooldownPct ?? 1) >= 1 ? 'border-cyan-500/40 text-white shadow-[0_0_12px_rgba(6,182,212,0.2)]' : 'border-slate-800 text-slate-500'
+              }`}>
+                <Zap className={`h-3.5 w-3.5 ${(hud.dashCooldownPct ?? 1) >= 1 ? 'text-cyan-400' : 'text-slate-600'}`} />
+                <span className="font-bold text-[10px] text-cyan-400">[SPACE]</span>
+                <span>DASH</span>
+                {(hud.dashCooldownPct ?? 1) < 1 && (
+                  <span className="text-[10px] text-slate-500">({Math.round((hud.dashCooldownPct ?? 1) * 100)}%)</span>
+                )}
+              </div>
+
+              {/* E: Radial Pulse */}
+              <div className={`glass-panel px-3 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-1.5 transition-all ${
+                (hud.specialCooldownPct ?? 1) >= 1 ? 'border-violet-500/40 text-white shadow-[0_0_12px_rgba(139,92,246,0.2)]' : 'border-slate-800 text-slate-500'
+              }`}>
+                <Biohazard className={`h-3.5 w-3.5 ${(hud.specialCooldownPct ?? 1) >= 1 ? 'text-violet-400' : 'text-slate-600'}`} />
+                <span className="font-bold text-[10px] text-violet-400">[E]</span>
+                <span>IMPULS</span>
+                {(hud.specialCooldownPct ?? 1) < 1 && (
+                  <span className="text-[10px] text-slate-500">({Math.round((hud.specialCooldownPct ?? 1) * 100)}%)</span>
+                )}
+              </div>
+
+              {/* Q: Shield Bubble */}
+              <div className={`glass-panel px-3 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-1.5 transition-all ${
+                hud.shieldActive
+                  ? 'border-cyan-400 bg-cyan-950/70 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)] animate-pulse'
+                  : (hud.shieldCdPct ?? 1) >= 1
+                    ? 'border-cyan-500/40 text-white shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 text-slate-500'
+              }`}>
+                <Shield className={`h-3.5 w-3.5 ${hud.shieldActive ? 'text-cyan-300' : (hud.shieldCdPct ?? 1) >= 1 ? 'text-cyan-400' : 'text-slate-600'}`} />
+                <span className="font-bold text-[10px] text-cyan-400">[Q]</span>
+                <span>{hud.shieldActive ? 'QALQON (FAOL)' : 'QALQON'}</span>
+                {!hud.shieldActive && (hud.shieldCdPct ?? 1) < 1 && (
+                  <span className="text-[10px] text-slate-500">({Math.round((hud.shieldCdPct ?? 1) * 100)}%)</span>
+                )}
+              </div>
+
+              {/* R: Grenade */}
+              <div className={`glass-panel px-3 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-1.5 transition-all ${
+                (hud.grenadeCdPct ?? 1) >= 1 ? 'border-orange-500/40 text-white shadow-[0_0_12px_rgba(249,115,22,0.2)]' : 'border-slate-800 text-slate-500'
+              }`}>
+                <Bomb className={`h-3.5 w-3.5 ${(hud.grenadeCdPct ?? 1) >= 1 ? 'text-orange-400' : 'text-slate-600'}`} />
+                <span className="font-bold text-[10px] text-orange-400">[R]</span>
+                <span>GRANATA</span>
+                {(hud.grenadeCdPct ?? 1) < 1 && (
+                  <span className="text-[10px] text-slate-500">({Math.round((hud.grenadeCdPct ?? 1) * 100)}%)</span>
+                )}
+              </div>
+
+              {/* Shift: Parry */}
+              <div className={`glass-panel px-3 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-1.5 transition-all ${
+                (hud.parryCdPct ?? 1) >= 1 ? 'border-amber-500/40 text-white shadow-[0_0_12px_rgba(245,158,11,0.2)]' : 'border-slate-800 text-slate-500'
+              }`}>
+                <Sparkles className={`h-3.5 w-3.5 ${(hud.parryCdPct ?? 1) >= 1 ? 'text-amber-400' : 'text-slate-600'}`} />
+                <span className="font-bold text-[10px] text-amber-400">[SHIFT]</span>
+                <span>BLOK / PARRY</span>
+                {(hud.parryCdPct ?? 1) < 1 && (
+                  <span className="text-[10px] text-slate-500">({Math.round((hud.parryCdPct ?? 1) * 100)}%)</span>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="glass-panel px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 flex items-center gap-2">
-            <Biohazard className={`h-4 w-4 ${(hud.specialCooldownPct ?? 1) >= 1 ? 'text-violet-400' : 'text-slate-600'}`} />
-            <span>E: RADIAL PULSE</span>
-            {(hud.specialCooldownPct ?? 1) < 1 && (
-              <span className="text-[10px] text-slate-500">({Math.round((hud.specialCooldownPct ?? 1) * 100)}%)</span>
-            )}
-          </div>
+          {/* Discreet Help Pill when controls are hidden */}
+          {!showControlsHint && (
+            <button
+              type="button"
+              onClick={() => setShowControlsHint(true)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-slate-800/80 bg-slate-950/70 hover:bg-slate-900/90 text-[10px] font-mono text-slate-400 hover:text-cyan-400 transition-all pointer-events-auto shadow-sm"
+              title="Boshqaruv tugmalarini ko'rsatish (H)"
+            >
+              <span>⌨️ BOSHQARUV TUGMALARI [H]</span>
+            </button>
+          )}
         </div>
       </div>
 

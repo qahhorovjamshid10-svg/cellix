@@ -11,6 +11,7 @@ import {
   SPECIAL_VISUALS, DASH_VISUALS, SPAWN_BOUNDS,
   SHOOTER_RANGE, SHOOTER_COOLDOWN,
   XP_CONFIG,
+  HEAVY_SHOT, CHARGED_SHOT, BURST_FIRE, SPREAD_SHOT, SNIPER_SHOT, SHIELD_BUBBLE, GRENADE, PARRY, FIRE_MODES, FireMode
 } from '../balance'
 import { computeLevelUps } from '../progression'
 import { HazardManager } from './HazardManager'
@@ -143,11 +144,28 @@ export default class SurvivalScene extends Phaser.Scene {
     D: Phaser.Input.Keyboard.Key
     SPACE: Phaser.Input.Keyboard.Key
     E: Phaser.Input.Keyboard.Key
+    Q: Phaser.Input.Keyboard.Key
+    R: Phaser.Input.Keyboard.Key
+    F: Phaser.Input.Keyboard.Key
+    SHIFT: Phaser.Input.Keyboard.Key
   }
 
   // Virtual Joystick input vectors from mobile overlay
   public mobileMoveVector = { x: 0, y: 0 }
   public mobileAttackTarget = { x: 0, y: 0, isAttacking: false }
+
+  // Combat Abilities
+  private fireMode: FireMode = 'auto'
+  private chargeStartTime: number = 0
+  private isCharging: boolean = false
+  private lastHeavyShotTime: number = 0
+  private lastShieldTime: number = -999999
+  private shieldActive: boolean = false
+  private shieldGraphic: Phaser.GameObjects.Arc | null = null
+  private lastGrenadeTime: number = -999999
+  private isParrying: boolean = false
+  private lastParryTime: number = -999999
+  private parryGraphic: Phaser.GameObjects.Arc | null = null
 
   constructor() {
     super({ key: 'SurvivalScene' })
@@ -345,8 +363,52 @@ export default class SurvivalScene extends Phaser.Scene {
         D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
         SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
         E: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E),
+        Q: this.input.keyboard!.addKey('Q'),
+        R: this.input.keyboard!.addKey('R'),
+        F: this.input.keyboard!.addKey('F'),
+        SHIFT: this.input.keyboard!.addKey('SHIFT'),
       }
     }
+
+    // Right-click heavy shot
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown()) {
+        const time = this.time.now
+        if (time > this.lastHeavyShotTime + HEAVY_SHOT.cooldown) {
+          const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
+          this.fireHeavyShot(worldPoint.x, worldPoint.y)
+          this.lastHeavyShotTime = time
+        }
+      }
+    })
+
+    // Disable right-click context menu
+    this.input.mouse?.disableContextMenu()
+
+    // Scroll wheel to cycle fire mode
+    this.input.on('wheel', () => {
+      this.cycleFireMode()
+    })
+
+    // Charge shot: track pointer down time
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.leftButtonDown()) {
+        this.chargeStartTime = this.time.now
+        this.isCharging = true
+      }
+    })
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (this.isCharging && pointer.leftButtonReleased()) {
+        const chargeTime = this.time.now - this.chargeStartTime
+        if (chargeTime > 400) {
+          const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
+          const chargeLevel = Math.min(chargeTime / CHARGED_SHOT.maxChargeTime, 1)
+          this.fireChargedShot(worldPoint.x, worldPoint.y, chargeLevel)
+        }
+        this.isCharging = false
+        this.chargeStartTime = 0
+      }
+    })
 
     // Overlaps
     this.physics.add.overlap(
@@ -448,6 +510,45 @@ export default class SurvivalScene extends Phaser.Scene {
       this.triggerSpecialPulse(time)
     }
 
+    // F key - cycle fire mode
+    if (Phaser.Input.Keyboard.JustDown(this.wasd?.F)) {
+      this.cycleFireMode()
+    }
+
+    // Q key - Shield Bubble
+    if (Phaser.Input.Keyboard.JustDown(this.wasd?.Q) && time > this.lastShieldTime + SHIELD_BUBBLE.cooldown) {
+      this.activateShield(time)
+    }
+
+    // R key - Grenade
+    if (Phaser.Input.Keyboard.JustDown(this.wasd?.R) && time > this.lastGrenadeTime + GRENADE.cooldown) {
+      const pointer = this.input.activePointer
+      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
+      this.throwGrenade(worldPoint.x, worldPoint.y, time)
+    }
+
+    // Shift key - Parry
+    if (Phaser.Input.Keyboard.JustDown(this.wasd?.SHIFT) && time > this.lastParryTime + PARRY.cooldown) {
+      this.activateParry(time)
+    }
+
+    // Update shield position
+    if (this.shieldActive && this.shieldGraphic) {
+      this.shieldGraphic.setPosition(this.player.x, this.player.y)
+    }
+
+    // Update charge ring visual
+    if (this.isCharging) {
+      const chargeTime = time - this.chargeStartTime
+      if (chargeTime > 400) {
+        const chargeLevel = Math.min(chargeTime / CHARGED_SHOT.maxChargeTime, 1)
+        // Draw charge ring effect
+        const chargeColor = chargeLevel >= 1 ? 0xff0000 : 0xfbbf24
+        const ring = this.add.circle(this.player.x, this.player.y, CHARGED_SHOT.chargeRingRadius * (1 + chargeLevel), chargeColor, 0.15 + chargeLevel * 0.2)
+        this.tweens.add({ targets: ring, alpha: 0, duration: 150, onComplete: () => ring.destroy() })
+      }
+    }
+
     // Character Visor & Weapon Aim Rotation
     const pointer = this.input.activePointer
     if (pointer && this.cameras?.main) {
@@ -457,7 +558,9 @@ export default class SurvivalScene extends Phaser.Scene {
     }
 
     if (pointer.isDown || this.mobileAttackTarget.isAttacking) {
-      if (time > this.lastShootTime + this.shootCooldown) {
+      // Don't auto-fire while charging (charge > 400ms)
+      const isChargingLong = this.isCharging && (time - this.chargeStartTime > 400)
+      if (!isChargingLong && time > this.lastShootTime + this.getFireModeCooldown()) {
         let targetX = pointer.worldX
         let targetY = pointer.worldY
 
@@ -475,7 +578,7 @@ export default class SurvivalScene extends Phaser.Scene {
           this.player.setRotation(mobileAimAngle)
         }
 
-        this.firePlayerSpore(targetX, targetY)
+        this.fireByMode(targetX, targetY)
         this.lastShootTime = time
       }
     }
@@ -490,8 +593,9 @@ export default class SurvivalScene extends Phaser.Scene {
       if (this.cursors.right.isDown) shootDirX += 1
 
       if (shootDirX !== 0 || shootDirY !== 0) {
-        if (time > this.lastShootTime + this.shootCooldown) {
-          this.firePlayerSpore(this.player.x + shootDirX * 100, this.player.y + shootDirY * 100)
+        const isChargingLong = this.isCharging && (time - this.chargeStartTime > 400)
+        if (!isChargingLong && time > this.lastShootTime + this.getFireModeCooldown()) {
+          this.fireByMode(this.player.x + shootDirX * 100, this.player.y + shootDirY * 100)
           this.lastShootTime = time
         }
       }
@@ -621,6 +725,13 @@ export default class SurvivalScene extends Phaser.Scene {
       bossActive: Boolean(this.boss && this.boss.active),
       bossHpPct: this.boss && this.boss.active ? Math.max(0, this.bossHp / this.bossMaxHp) : 0,
       bossName: 'THE ANCIENT CELL',
+      fireMode: this.fireMode,
+      isCharging: this.isCharging,
+      chargeLevel: this.isCharging ? Math.min((this.time.now - this.chargeStartTime) / CHARGED_SHOT.maxChargeTime, 1) : 0,
+      shieldCdPct: Math.min(1, (time - this.lastShieldTime) / SHIELD_BUBBLE.cooldown),
+      grenadeCdPct: Math.min(1, (time - this.lastGrenadeTime) / GRENADE.cooldown),
+      parryCdPct: Math.min(1, (time - this.lastParryTime) / PARRY.cooldown),
+      shieldActive: this.shieldActive,
     })
     
     if (this.waveActive || this.waveStarting) {
@@ -720,6 +831,182 @@ export default class SurvivalScene extends Phaser.Scene {
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y)
       if (dist < PLAYER.specialRange) {
         this.damageEnemy(enemy, this.playerDamage * PLAYER.specialDamageMult)
+      }
+    })
+  }
+
+  private getFireModeCooldown(): number {
+    switch (this.fireMode) {
+      case 'burst': return BURST_FIRE.cooldown
+      case 'spread': return SPREAD_SHOT.cooldown
+      case 'sniper': return SNIPER_SHOT.cooldown
+      default: return this.shootCooldown
+    }
+  }
+
+  private fireByMode(targetX: number, targetY: number) {
+    switch (this.fireMode) {
+      case 'burst':
+        this.fireBurst(targetX, targetY)
+        break
+      case 'spread':
+        this.fireSpread(targetX, targetY)
+        break
+      case 'sniper':
+        this.fireSniperShot(targetX, targetY)
+        break
+      default:
+        this.firePlayerSpore(targetX, targetY)
+    }
+  }
+
+  private cycleFireMode() {
+    const idx = FIRE_MODES.indexOf(this.fireMode)
+    this.fireMode = FIRE_MODES[(idx + 1) % FIRE_MODES.length]
+    soundManager.playHover()
+  }
+
+  private fireHeavyShot(targetX: number, targetY: number) {
+    const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    if (!spore) return
+    spore.setActive(true).setVisible(true)
+    spore.setCircle(HEAVY_SHOT.hitboxRadius)
+    spore.setScale(1.8)
+    spore.setTint(0xff6600)
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+    spore.setVelocity(Math.cos(angle) * HEAVY_SHOT.speed, Math.sin(angle) * HEAVY_SHOT.speed)
+    spore.setData('damageMult', HEAVY_SHOT.damageMult)
+    spore.setData('expiresAt', this.time.now + HEAVY_SHOT.lifetime)
+    soundManager.playExplosion()
+    this.cameras.main.shake(50, 0.003)
+  }
+
+  private fireChargedShot(targetX: number, targetY: number, chargeLevel: number) {
+    const dmgMult = 1 + (CHARGED_SHOT.maxDamageMult - 1) * chargeLevel
+    const spdMult = 1 + (CHARGED_SHOT.maxSpeedMult - 1) * chargeLevel
+    const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    if (!spore) return
+    spore.setActive(true).setVisible(true)
+    spore.setCircle(PLAYER_PROJECTILE.hitboxRadius * (1 + chargeLevel))
+    spore.setScale(1 + chargeLevel * 1.2)
+    spore.setTint(chargeLevel >= 1 ? 0xff0000 : 0xffaa00)
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+    const speed = PLAYER_PROJECTILE.speed * spdMult
+    spore.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed)
+    spore.setData('damageMult', dmgMult)
+    spore.setData('piercing', chargeLevel >= 1 && CHARGED_SHOT.pierceAtMax)
+    spore.setData('expiresAt', this.time.now + PLAYER_PROJECTILE.lifetime * 1.5)
+    soundManager.playExplosion()
+    this.cameras.main.shake(80 * chargeLevel, 0.004 * chargeLevel)
+  }
+
+  private fireBurst(targetX: number, targetY: number) {
+    for (let i = 0; i < BURST_FIRE.count; i++) {
+      this.time.delayedCall(i * BURST_FIRE.delay, () => {
+        this.firePlayerSpore(targetX, targetY)
+      })
+    }
+  }
+
+  private fireSpread(targetX: number, targetY: number) {
+    const baseAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+    const halfSpread = SPREAD_SHOT.spreadAngle
+    for (let i = 0; i < SPREAD_SHOT.count; i++) {
+      const angleOffset = -halfSpread + (2 * halfSpread * i) / (SPREAD_SHOT.count - 1)
+      const angle = baseAngle + angleOffset
+      const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+      if (!spore) continue
+      spore.setActive(true).setVisible(true)
+      spore.setCircle(PLAYER_PROJECTILE.hitboxRadius)
+      spore.setVelocity(Math.cos(angle) * PLAYER_PROJECTILE.speed, Math.sin(angle) * PLAYER_PROJECTILE.speed)
+      spore.setData('damageMult', SPREAD_SHOT.damageMult)
+      spore.setData('expiresAt', this.time.now + PLAYER_PROJECTILE.lifetime)
+    }
+    soundManager.playShoot()
+  }
+
+  private fireSniperShot(targetX: number, targetY: number) {
+    const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    if (!spore) return
+    spore.setActive(true).setVisible(true)
+    spore.setCircle(SNIPER_SHOT.hitboxRadius)
+    spore.setScale(0.7)
+    spore.setTint(0x3b82f6)
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+    spore.setVelocity(Math.cos(angle) * SNIPER_SHOT.speed, Math.sin(angle) * SNIPER_SHOT.speed)
+    spore.setData('damageMult', SNIPER_SHOT.damageMult)
+    spore.setData('expiresAt', this.time.now + SNIPER_SHOT.lifetime)
+    soundManager.playShoot()
+  }
+
+  private activateShield(time: number) {
+    this.lastShieldTime = time
+    this.shieldActive = true
+    this.isInvulnerable = true
+    soundManager.playDash()
+    this.shieldGraphic = this.add.circle(this.player.x, this.player.y, SHIELD_BUBBLE.radius, SHIELD_BUBBLE.color, 0.25)
+    this.shieldGraphic.setStrokeStyle(2, SHIELD_BUBBLE.color, 0.8)
+    this.time.delayedCall(SHIELD_BUBBLE.duration, () => {
+      this.shieldActive = false
+      if (!this.isDashing) this.isInvulnerable = false
+      if (this.shieldGraphic) {
+        this.shieldGraphic.destroy()
+        this.shieldGraphic = null
+      }
+    })
+  }
+
+  private throwGrenade(targetX: number, targetY: number, time: number) {
+    this.lastGrenadeTime = time
+    const grenade = this.add.circle(this.player.x, this.player.y, 6, GRENADE.color, 0.9)
+    soundManager.playShoot()
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+    const dist = Math.min(Phaser.Math.Distance.Between(this.player.x, this.player.y, targetX, targetY), 400)
+    const endX = this.player.x + Math.cos(angle) * dist
+    const endY = this.player.y + Math.sin(angle) * dist
+
+    this.tweens.add({
+      targets: grenade,
+      x: endX,
+      y: endY,
+      duration: GRENADE.fuseTime,
+      onComplete: () => {
+        grenade.destroy()
+        soundManager.playExplosion()
+        this.cameras.main.shake(120, 0.008)
+        const blast = this.add.circle(endX, endY, 10, GRENADE.color, 0.6)
+        this.tweens.add({
+          targets: blast,
+          radius: GRENADE.radius,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => blast.destroy(),
+        })
+        this.enemies.getChildren().forEach((enemyObj) => {
+          if (!enemyObj.active) return
+          const enemy = enemyObj as Phaser.Physics.Arcade.Sprite
+          const d = Phaser.Math.Distance.Between(endX, endY, enemy.x, enemy.y)
+          if (d < GRENADE.radius) {
+            this.damageEnemy(enemy, GRENADE.damage)
+          }
+        })
+      }
+    })
+  }
+
+  private activateParry(time: number) {
+    this.lastParryTime = time
+    this.isParrying = true
+    soundManager.playHover()
+    this.parryGraphic = this.add.circle(this.player.x, this.player.y, 30, PARRY.color, 0.3)
+    this.parryGraphic.setStrokeStyle(3, PARRY.color, 0.9)
+
+    // During parry window, reflect nearby enemy projectiles
+    this.time.delayedCall(PARRY.activeWindow, () => {
+      this.isParrying = false
+      if (this.parryGraphic) {
+        this.parryGraphic.destroy()
+        this.parryGraphic = null
       }
     })
   }
@@ -1079,9 +1366,16 @@ export default class SurvivalScene extends Phaser.Scene {
     enemyObj: Phaser.Physics.Arcade.Sprite
   ) {
     if (!sporeObj.active || !enemyObj.active) return
-    sporeObj.setActive(false).setVisible(false)
 
-    let dmg = this.playerDamage
+    const damageMult = sporeObj.getData('damageMult') || 1
+    const isPiercing = sporeObj.getData('piercing') || false
+
+    if (!isPiercing) {
+      sporeObj.setActive(false).setVisible(false)
+      sporeObj.body?.stop()
+    }
+
+    let dmg = this.playerDamage * damageMult
     if (this.hasOvercharge && this.playerHp / this.playerMaxHp < OVERCHARGE.hpThreshold) {
       dmg *= OVERCHARGE.damageMult
     }

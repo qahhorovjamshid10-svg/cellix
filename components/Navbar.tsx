@@ -14,13 +14,25 @@ export default function Navbar({ coinBalanceOverride }: { coinBalanceOverride?: 
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
-    const checkCookie = () => {
+    const checkAuth = () => {
       const match = typeof document !== 'undefined' ? document.cookie.match(/virus_player_id=([^;]+)/)?.[1] ?? null : null
-      setPlayerId(match)
+      if (!match) {
+        setPlayerId(null)
+        return
+      }
+      fetch('/api/auth/me', { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data?.authenticated) {
+            document.cookie = 'virus_player_id=; path=/; max-age=0'
+            setPlayerId(null)
+          } else {
+            setPlayerId(data.player?.id ?? match)
+          }
+        })
+        .catch(() => setPlayerId(match))
     }
-    checkCookie()
-    const timer = setInterval(checkCookie, 1000)
-    return () => clearInterval(timer)
+    checkAuth()
   }, [pathname])
 
   return (
@@ -91,7 +103,7 @@ export default function Navbar({ coinBalanceOverride }: { coinBalanceOverride?: 
 
           {playerId ? (
             <Link
-              href={`/profile/${playerId}`}
+              href="/profile/me"
               onClick={() => setMenuOpen(false)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
                 pathname.startsWith('/profile')

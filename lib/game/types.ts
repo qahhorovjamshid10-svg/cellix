@@ -62,6 +62,13 @@ export interface GameHUDData {
   bossActive?: boolean
   bossHpPct?: number
   bossName?: string
+  fireMode?: 'auto' | 'burst' | 'spread' | 'sniper'
+  isCharging?: boolean
+  chargeLevel?: number
+  shieldCdPct?: number
+  grenadeCdPct?: number
+  parryCdPct?: number
+  shieldActive?: boolean
   gameMode?: string
   dailyChallenge?: DailyChallenge
 }
