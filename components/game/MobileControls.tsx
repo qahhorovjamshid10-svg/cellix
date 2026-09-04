@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { Zap, Sparkles, Crosshair } from 'lucide-react'
 
 interface MobileControlsProps {
@@ -16,6 +16,22 @@ function haptic(ms = 30) {
   try { navigator?.vibrate?.(ms) } catch { /* ignore */ }
 }
 
+function processJoystick(
+  touch: { clientX: number; clientY: number },
+  rect: DOMRect,
+  maxRadius: number
+): { nx: number; ny: number; px: number; py: number } {
+  const cx = rect.left + rect.width / 2
+  const cy = rect.top + rect.height / 2
+  const dx = touch.clientX - cx
+  const dy = touch.clientY - cy
+  const dist = Math.min(Math.hypot(dx, dy), maxRadius)
+  const angle = Math.atan2(dy, dx)
+  const nx = (dist * Math.cos(angle)) / maxRadius
+  const ny = (dist * Math.sin(angle)) / maxRadius
+  return { nx, ny, px: nx * maxRadius, py: ny * maxRadius }
+}
+
 export default function MobileControls({
   onMove,
   onAttack,
@@ -24,83 +40,87 @@ export default function MobileControls({
   dashCdPct,
   specCdPct,
 }: MobileControlsProps) {
-  // ─── Left Joystick (Movement) ─────────────────────────────
-  const moveJoystickRef = useRef<HTMLDivElement | null>(null)
-  const [moveKnob, setMoveKnob] = useState({ x: 0, y: 0 })
+  // ─── Move Joystick State ──────────────────────────────────
+  const moveRef = useRef<HTMLDivElement | null>(null)
   const moveIdRef = useRef<number | null>(null)
+  const [moveKnob, setMoveKnob] = useState({ x: 0, y: 0 })
 
-  const handleMoveStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    const touch = e.touches[0]
-    if (touch) moveIdRef.current = touch.identifier
-    handleMoveUpdate(e)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ─── Aim Joystick State ───────────────────────────────────
+  const aimRef = useRef<HTMLDivElement | null>(null)
+  const aimIdRef = useRef<number | null>(null)
+  const [aimKnob, setAimKnob] = useState({ x: 0, y: 0 })
+  const [isAiming, setIsAiming] = useState(false)
 
-  const handleMoveUpdate = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (!moveJoystickRef.current) return
-    const touch = Array.from(e.touches).find(t => t.identifier === moveIdRef.current) || e.touches[0]
-    if (!touch) return
-
-    const rect = moveJoystickRef.current.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const dx = touch.clientX - centerX
-    const dy = touch.clientY - centerY
-    const dist = Math.hypot(dx, dy)
-    const maxRadius = 40
-    const clampedDist = Math.min(dist, maxRadius)
-    const angle = Math.atan2(dy, dx)
-    const moveX = (clampedDist * Math.cos(angle)) / maxRadius
-    const moveY = (clampedDist * Math.sin(angle)) / maxRadius
-
-    setMoveKnob({ x: moveX * maxRadius, y: moveY * maxRadius })
-    onMove({ x: moveX, y: moveY })
+  // ═══════════════════════════════════════════════════════════
+  // MOVE JOYSTICK — changedTouches bilan faqat shu elementning touch'ini oladi
+  // ═══════════════════════════════════════════════════════════
+  const onMoveStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (moveIdRef.current !== null) return // already tracking a touch
+    const t = e.changedTouches[0]
+    if (!t || !moveRef.current) return
+    moveIdRef.current = t.identifier
+    const { nx, ny, px, py } = processJoystick(t, moveRef.current.getBoundingClientRect(), 40)
+    setMoveKnob({ x: px, y: py })
+    onMove({ x: nx, y: ny })
   }, [onMove])
 
-  const handleMoveEnd = useCallback(() => {
+  const onMoveMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (moveIdRef.current === null || !moveRef.current) return
+    const t = Array.from(e.touches).find(t => t.identifier === moveIdRef.current)
+    if (!t) return
+    const { nx, ny, px, py } = processJoystick(t, moveRef.current.getBoundingClientRect(), 40)
+    setMoveKnob({ x: px, y: py })
+    onMove({ x: nx, y: ny })
+  }, [onMove])
+
+  const onMoveEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only reset if OUR tracked touch ended
+    const ended = Array.from(e.changedTouches).find(t => t.identifier === moveIdRef.current)
+    if (!ended) return
     moveIdRef.current = null
     setMoveKnob({ x: 0, y: 0 })
     onMove({ x: 0, y: 0 })
   }, [onMove])
 
-  // ─── Right Joystick (Aim & Shoot) ─────────────────────────
-  const aimJoystickRef = useRef<HTMLDivElement | null>(null)
-  const [aimKnob, setAimKnob] = useState({ x: 0, y: 0 })
-  const [isAiming, setIsAiming] = useState(false)
-  const aimIdRef = useRef<number | null>(null)
-
-  const handleAimStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    const touch = e.touches[0]
-    if (touch) aimIdRef.current = touch.identifier
+  // ═══════════════════════════════════════════════════════════
+  // AIM JOYSTICK
+  // ═══════════════════════════════════════════════════════════
+  const onAimStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (aimIdRef.current !== null) return
+    const t = e.changedTouches[0]
+    if (!t || !aimRef.current) return
+    aimIdRef.current = t.identifier
     setIsAiming(true)
     haptic(15)
-    handleAimUpdate(e)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const handleAimUpdate = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (!aimJoystickRef.current) return
-    const touch = Array.from(e.touches).find(t => t.identifier === aimIdRef.current) || e.touches[0]
-    if (!touch) return
-
-    const rect = aimJoystickRef.current.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const dx = touch.clientX - centerX
-    const dy = touch.clientY - centerY
-    const dist = Math.hypot(dx, dy)
-    const maxRadius = 40
-    const clampedDist = Math.min(dist, maxRadius)
-    const angle = Math.atan2(dy, dx)
-    const aimX = (clampedDist * Math.cos(angle)) / maxRadius
-    const aimY = (clampedDist * Math.sin(angle)) / maxRadius
-
-    setAimKnob({ x: aimX * maxRadius, y: aimY * maxRadius })
-    // Send aim direction scaled up for the game engine
-    onAttack({ x: aimX * 200, y: aimY * 200, isAttacking: true })
+    const { nx, ny, px, py } = processJoystick(t, aimRef.current.getBoundingClientRect(), 40)
+    setAimKnob({ x: px, y: py })
+    onAttack({ x: nx * 200, y: ny * 200, isAttacking: true })
   }, [onAttack])
 
-  const handleAimEnd = useCallback(() => {
+  const onAimMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (aimIdRef.current === null || !aimRef.current) return
+    const t = Array.from(e.touches).find(t => t.identifier === aimIdRef.current)
+    if (!t) return
+    const { nx, ny, px, py } = processJoystick(t, aimRef.current.getBoundingClientRect(), 40)
+    setAimKnob({ x: px, y: py })
+    onAttack({ x: nx * 200, y: ny * 200, isAttacking: true })
+  }, [onAttack])
+
+  const onAimEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const ended = Array.from(e.changedTouches).find(t => t.identifier === aimIdRef.current)
+    if (!ended) return
     aimIdRef.current = null
     setAimKnob({ x: 0, y: 0 })
     setIsAiming(false)
@@ -111,25 +131,24 @@ export default function MobileControls({
     <div className="absolute inset-0 pointer-events-none z-30 select-none sm:hidden" style={{ touchAction: 'none' }}>
 
       {/* ═══ Left: Movement Joystick ═══ */}
-      <div className="absolute left-4 bottom-6 pointer-events-auto">
-        {/* Label */}
+      <div className="absolute left-4 bottom-6 pointer-events-auto" style={{ touchAction: 'none' }}>
         <div className="text-center mb-1.5">
           <span className="text-[9px] font-mono font-bold text-cyan-400/70 uppercase tracking-widest">YURISH</span>
         </div>
         <div
-          ref={moveJoystickRef}
-          onTouchStart={handleMoveStart}
-          onTouchMove={handleMoveUpdate}
-          onTouchEnd={handleMoveEnd}
-          onTouchCancel={handleMoveEnd}
-          className="h-28 w-28 rounded-full border-2 border-cyan-500/40 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center relative touch-none shadow-[0_0_20px_rgba(0,240,255,0.15)]"
+          ref={moveRef}
+          onTouchStart={onMoveStart}
+          onTouchMove={onMoveMove}
+          onTouchEnd={onMoveEnd}
+          onTouchCancel={onMoveEnd}
+          className="h-28 w-28 rounded-full border-2 border-cyan-500/40 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center relative"
+          style={{ touchAction: 'none' }}
         >
-          {/* Direction indicators */}
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="absolute top-2 text-cyan-500/30 text-[8px] font-mono">▲</div>
             <div className="absolute bottom-2 text-cyan-500/30 text-[8px] font-mono">▼</div>
-            <div className="absolute left-2 text-cyan-500/30 text-[8px] font-mono">◄</div>
-            <div className="absolute right-2 text-cyan-500/30 text-[8px] font-mono">►</div>
+            <div className="absolute left-2.5 text-cyan-500/30 text-[8px] font-mono">◄</div>
+            <div className="absolute right-2.5 text-cyan-500/30 text-[8px] font-mono">►</div>
           </div>
           <div
             className="h-12 w-12 rounded-full bg-cyan-400/70 shadow-[0_0_12px_rgba(0,240,255,0.7)] transition-transform duration-75"
@@ -138,12 +157,11 @@ export default function MobileControls({
         </div>
       </div>
 
-      {/* ═══ Right Side: Aim Joystick + Action Buttons ═══ */}
-      <div className="absolute right-4 bottom-6 pointer-events-auto flex flex-col items-center gap-2.5">
+      {/* ═══ Right: Aim Joystick + Action Buttons ═══ */}
+      <div className="absolute right-4 bottom-6 pointer-events-auto flex flex-col items-center gap-2" style={{ touchAction: 'none' }}>
 
         {/* Action Buttons Row */}
         <div className="flex gap-2.5 mb-1">
-          {/* Dash Button */}
           <button
             type="button"
             aria-label="Dash"
@@ -158,12 +176,12 @@ export default function MobileControls({
                 ? 'bg-cyan-500/90 text-slate-950 border-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.5)]'
                 : 'bg-slate-900/80 text-slate-600 border-slate-700'
             }`}
+            style={{ touchAction: 'manipulation' }}
           >
             <Zap className="h-5 w-5" />
             <span className="text-[7px] font-bold mt-0.5 leading-none">DASH</span>
           </button>
 
-          {/* Special Ability Button */}
           <button
             type="button"
             aria-label="Special ability"
@@ -178,6 +196,7 @@ export default function MobileControls({
                 ? 'bg-purple-500/90 text-white border-purple-300 shadow-[0_0_15px_rgba(176,38,255,0.5)]'
                 : 'bg-slate-900/80 text-slate-600 border-slate-700'
             }`}
+            style={{ touchAction: 'manipulation' }}
           >
             <Sparkles className="h-5 w-5" />
             <span className="text-[7px] font-bold mt-0.5 leading-none">MAXSUS</span>
@@ -191,29 +210,27 @@ export default function MobileControls({
           </span>
         </div>
         <div
-          ref={aimJoystickRef}
-          onTouchStart={handleAimStart}
-          onTouchMove={handleAimUpdate}
-          onTouchEnd={handleAimEnd}
-          onTouchCancel={handleAimEnd}
-          className={`h-28 w-28 rounded-full border-2 backdrop-blur-sm flex items-center justify-center relative touch-none transition-all duration-150 ${
+          ref={aimRef}
+          onTouchStart={onAimStart}
+          onTouchMove={onAimMove}
+          onTouchEnd={onAimEnd}
+          onTouchCancel={onAimEnd}
+          className={`h-28 w-28 rounded-full border-2 backdrop-blur-sm flex items-center justify-center relative transition-all duration-150 ${
             isAiming
               ? 'border-rose-400 bg-rose-950/50 shadow-[0_0_25px_rgba(255,0,85,0.4)]'
               : 'border-rose-500/40 bg-slate-950/50 shadow-[0_0_20px_rgba(255,0,85,0.15)]'
           }`}
+          style={{ touchAction: 'none' }}
         >
-          {/* Crosshair overlay */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <Crosshair className={`h-8 w-8 transition-all duration-150 ${isAiming ? 'text-rose-400/60 scale-125' : 'text-rose-500/25'}`} />
           </div>
-          {/* Aim direction indicators */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="absolute top-2 text-rose-500/30 text-[8px] font-mono">▲</div>
             <div className="absolute bottom-2 text-rose-500/30 text-[8px] font-mono">▼</div>
-            <div className="absolute left-2 text-rose-500/30 text-[8px] font-mono">◄</div>
-            <div className="absolute right-2 text-rose-500/30 text-[8px] font-mono">►</div>
+            <div className="absolute left-2.5 text-rose-500/30 text-[8px] font-mono">◄</div>
+            <div className="absolute right-2.5 text-rose-500/30 text-[8px] font-mono">►</div>
           </div>
-          {/* Aim knob */}
           <div
             className={`h-12 w-12 rounded-full transition-transform duration-75 ${
               isAiming
