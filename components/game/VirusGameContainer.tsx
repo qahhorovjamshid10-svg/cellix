@@ -292,7 +292,7 @@ export default function VirusGameContainer({ gameMode = 'classic' }: { gameMode?
   }
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none cursor-crosshair">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none cursor-crosshair" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
       {/* Phaser Canvas Mount Node */}
       <div ref={containerRef} className="w-full h-full" />
 

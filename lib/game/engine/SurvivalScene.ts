@@ -470,6 +470,9 @@ export default class SurvivalScene extends Phaser.Scene {
             targetX = this.player.x + this.mobileAttackTarget.x
             targetY = this.player.y + this.mobileAttackTarget.y
           }
+          // Rotate player toward aim target on mobile
+          const mobileAimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+          this.player.setRotation(mobileAimAngle)
         }
 
         this.firePlayerSpore(targetX, targetY)

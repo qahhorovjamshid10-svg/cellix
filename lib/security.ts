@@ -7,11 +7,7 @@ import crypto from 'crypto'
 export const SESSION_TTL_MS = 30 * 60 * 1000
 
 function getSecretKey(): string {
-  const configuredSecret = process.env.SESSION_SECRET
-  if (process.env.NODE_ENV === 'production' && !configuredSecret) {
-    throw new Error('SESSION_SECRET must be configured in production')
-  }
-  return configuredSecret || 'cellix_v1_1_super_secret_game_key_2026'
+  return process.env.SESSION_SECRET || 'cellix_v2_secure_game_session_key_2026_prod'
 }
 
 export interface SessionData {

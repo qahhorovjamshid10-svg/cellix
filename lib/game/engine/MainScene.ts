@@ -469,6 +469,9 @@ export default class MainScene extends Phaser.Scene {
           const closestEnemy = this.getClosestActiveEnemy()
           targetX = closestEnemy?.x ?? this.player.x + this.mobileAttackTarget.x
           targetY = closestEnemy?.y ?? this.player.y + this.mobileAttackTarget.y
+          // Rotate player toward aim target on mobile
+          const mobileAimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
+          this.player.setRotation(mobileAimAngle)
         }
 
         this.firePlayerSpore(targetX, targetY)
