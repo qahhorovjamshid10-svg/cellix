@@ -82,7 +82,7 @@ export function validateScoreSubmission(metrics: {
   gameMode: string
   startTime?: number
 }): { valid: boolean; reason?: string } {
-  const { score, level, kills, survivalTime, startTime } = metrics
+  const { score, level, kills, survivalTime, gameMode, startTime } = metrics
 
   // Basic sanity bounds
   if (score < 0 || level < 1 || kills < 0 || survivalTime < 0) {
@@ -96,24 +96,26 @@ export function validateScoreSubmission(metrics: {
   // Time elapsed check if token startTime is provided
   if (startTime) {
     const elapsedSec = (Date.now() - startTime) / 1000
-    // Survival time reported by client cannot exceed real elapsed time by more than 15 seconds
-    if (survivalTime > elapsedSec + 15) {
+    // Survival time reported by client cannot exceed real elapsed time by more than 30 seconds
+    if (survivalTime > elapsedSec + 30) {
       return { valid: false, reason: 'Survival time exceeds real session duration' }
     }
   }
 
-  // Anti-cheat density checks
+  // Anti-cheat density checks (Daily mode modifiers can give 2x score, higher spawn density, etc.)
   if (survivalTime > 0) {
     const pointsPerSec = score / survivalTime
-    if (pointsPerSec > 350) {
-      return { valid: false, reason: 'Impossible score accumulation rate (>350 pts/sec)' }
+    const maxPointsPerSec = gameMode === 'daily' ? 1500 : 900
+    if (pointsPerSec > maxPointsPerSec) {
+      return { valid: false, reason: `Impossible score accumulation rate (>${maxPointsPerSec} pts/sec)` }
     }
 
     const killsPerSec = kills / survivalTime
-    if (killsPerSec > 5) {
-      return { valid: false, reason: 'Impossible kill rate (>5 kills/sec)' }
+    const maxKillsPerSec = gameMode === 'daily' ? 25 : 18
+    if (killsPerSec > maxKillsPerSec) {
+      return { valid: false, reason: `Impossible kill rate (>${maxKillsPerSec} kills/sec)` }
     }
-  } else if (score > 500 || kills > 10) {
+  } else if (score > 2000 || kills > 25) {
     return { valid: false, reason: 'Impossibly high score/kills with 0s survival time' }
   }
 

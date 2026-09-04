@@ -231,16 +231,37 @@ export async function POST(req: Request) {
       })
 
       if (normalizedGameMode === 'daily' && challengeDate) {
-        await tx.dailyResult.create({
-          data: {
-            playerId: player.id,
-            challengeDate,
-            score: Math.floor(score),
-            level: normalizedLevel,
-            kills: normalizedKills,
-            survivalTime: normalizedSurvivalTime,
+        const existingDaily = await tx.dailyResult.findUnique({
+          where: {
+            playerId_challengeDate: {
+              playerId: player.id,
+              challengeDate,
+            },
           },
         })
+
+        if (!existingDaily) {
+          await tx.dailyResult.create({
+            data: {
+              playerId: player.id,
+              challengeDate,
+              score: Math.floor(score),
+              level: normalizedLevel,
+              kills: normalizedKills,
+              survivalTime: normalizedSurvivalTime,
+            },
+          })
+        } else if (Math.floor(score) > existingDaily.score) {
+          await tx.dailyResult.update({
+            where: { id: existingDaily.id },
+            data: {
+              score: Math.floor(score),
+              level: normalizedLevel,
+              kills: normalizedKills,
+              survivalTime: normalizedSurvivalTime,
+            },
+          })
+        }
       }
 
       const updatedPlayer = await tx.player.update({
@@ -296,9 +317,6 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === 'RUN_ALREADY_FINISHED') {
       return NextResponse.json({ error: 'Run has already been finished.' }, { status: 409 })
-    }
-    if (error instanceof Error && error.message.includes('Unique constraint failed')) {
-      return NextResponse.json({ error: 'Daily result already submitted.' }, { status: 409 })
     }
     console.error('Error submitting score:', error)
     return NextResponse.json({ error: 'Failed to record score.' }, { status: 500 })
