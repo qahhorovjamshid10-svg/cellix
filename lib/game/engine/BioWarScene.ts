@@ -135,6 +135,7 @@ const TARGET_BOT_COUNT = 15
 const INITIAL_FOOD_COUNT = 100
 const MAX_FOOD_COUNT = 1500
 const ROUND_DURATION_SEC = 180 // 3 minutes per round
+const KILL_MASS_THRESHOLD = 10 // Baseline worm dies only after taking at least 8 head hits (or 14 tail hits)
 
 const BOT_NAMES = [
   'Tashkent_Viper',
@@ -213,7 +214,7 @@ export default class BioWarScene extends Phaser.Scene {
   private lastWinnerName?: string
 
   // Session stats & persistence
-  private peakMass: number = 25
+  private peakMass: number = 30
   private score: number = 0
   private sessionStartTime: number = Date.now()
   private lastSavedScore: number = 0
@@ -234,7 +235,7 @@ export default class BioWarScene extends Phaser.Scene {
   public create() {
     this.roundTimeRemaining = ROUND_DURATION_SEC
     this.sessionStartTime = Date.now()
-    this.peakMass = 25
+    this.peakMass = 30
 
     // Physics world bounds
     this.physics.world.setBounds(0, 0, ARENA_SIZE, ARENA_SIZE)
@@ -343,8 +344,8 @@ export default class BioWarScene extends Phaser.Scene {
       turnSpeed: 0.12,
       baseSpeed: 230,
       speed: 230,
-      mass: 25, // Small initial mass
-      headRadius: 11, // Small initial head
+      mass: 30, // Initial baseline mass (requires 8 head hits or 14 tail hits to kill)
+      headRadius: 12, // Initial head radius
       primaryColor: skin.primaryColor,
       secondaryColor: skin.accentColor,
       tail: [],
@@ -388,7 +389,7 @@ export default class BioWarScene extends Phaser.Scene {
     const spawnX = Phaser.Math.Between(200, ARENA_SIZE - 200)
     const spawnY = Phaser.Math.Between(200, ARENA_SIZE - 200)
 
-    const initialMass = Phaser.Math.Between(25, 55)
+    const initialMass = Phaser.Math.Between(30, 60)
 
     const bot: WormEntity = {
       id: `bot_${Date.now()}_${index}`,
@@ -460,7 +461,7 @@ export default class BioWarScene extends Phaser.Scene {
   }
 
   public respawnPlayer() {
-    this.peakMass = 25
+    this.peakMass = 30
     this.score = 0
     this.sessionStartTime = Date.now()
     if (this.player?.nameText) {
@@ -535,7 +536,7 @@ export default class BioWarScene extends Phaser.Scene {
     // Reset round timer
     this.roundTimeRemaining = ROUND_DURATION_SEC
     this.roundNumber++
-    this.peakMass = 25
+    this.peakMass = 30
     this.score = 0
     this.sessionStartTime = Date.now()
 
@@ -688,7 +689,7 @@ export default class BioWarScene extends Phaser.Scene {
       this.player.isBoosting = true
       this.player.speed = this.player.baseSpeed * 1.75
       this.player.boostEnergy = Math.max(0, this.player.boostEnergy - 35 * dt)
-      this.player.mass = Math.max(18, this.player.mass - 2.5 * dt) // tiny mass burn
+      this.player.mass = Math.max(12, this.player.mass - 1.8 * dt) // controlled mass burn, cannot kill player
 
       // Drop hazard trail behind player
       if (Math.random() < 0.35) {
@@ -702,7 +703,8 @@ export default class BioWarScene extends Phaser.Scene {
     } else {
       this.player.isBoosting = false
       this.player.speed = this.player.baseSpeed
-      this.player.boostEnergy = Math.min(100, this.player.boostEnergy + 20 * dt)
+      // 40% slower recharge: takes 7.0 seconds instead of 5.0 seconds
+      this.player.boostEnergy = Math.min(100, this.player.boostEnergy + 14.3 * dt)
     }
 
     // Move forward
@@ -744,7 +746,7 @@ export default class BioWarScene extends Phaser.Scene {
       if (bot.isBoosting && bot.boostEnergy > 10 && bot.mass > 25) {
         bot.speed = bot.baseSpeed * 1.65
         bot.boostEnergy = Math.max(0, bot.boostEnergy - 30 * dt)
-        bot.mass = Math.max(18, bot.mass - 2 * dt)
+        bot.mass = Math.max(12, bot.mass - 1.8 * dt)
         if (Math.random() < 0.25) {
           this.hazardParticles.push({
             x: bot.x - Math.cos(bot.angle) * (bot.headRadius + 5),
@@ -756,7 +758,8 @@ export default class BioWarScene extends Phaser.Scene {
       } else {
         bot.isBoosting = false
         bot.speed = bot.baseSpeed
-        bot.boostEnergy = Math.min(100, bot.boostEnergy + 15 * dt)
+        // 40% slower recharge for bots
+        bot.boostEnergy = Math.min(100, bot.boostEnergy + 10.7 * dt)
       }
 
       // Move
@@ -1022,7 +1025,7 @@ export default class BioWarScene extends Phaser.Scene {
       vy,
       ownerId: shooter.id,
       color: shooter.primaryColor,
-      damage: 24, // Boosted damage (was 15) for high-impact combat
+      damage: 2.5, // Balanced: requires at least 8 head hits or 14 tail hits to kill a baseline worm
       lifetime: 1.25,
     })
 
@@ -1104,8 +1107,8 @@ export default class BioWarScene extends Phaser.Scene {
             w1.y -= Math.sin(angle) * 16
             w2.x += Math.cos(angle) * 16
             w2.y += Math.sin(angle) * 16
-            w1.mass = Math.max(18, w1.mass - 8)
-            w2.mass = Math.max(18, w2.mass - 8)
+            w1.mass = Math.max(12, w1.mass - 8)
+            w2.mass = Math.max(12, w2.mass - 8)
             soundManager.playHit()
             for (let sp = 0; sp < 6; sp++) {
               this.hazardParticles.push({
@@ -1157,10 +1160,10 @@ export default class BioWarScene extends Phaser.Scene {
           worm.lastDamagerId = proj.ownerId
           worm.lastDamageTime = Date.now()
 
-          // 10% mass/XP siphon on every hit (e.g. 100 XP -> 10 stolen)
-          const stolenMass = Math.max(2, Math.round(worm.mass * 0.10))
-          const totalDmg = Math.max(proj.damage, stolenMass)
-          worm.mass = Math.max(15, worm.mass - totalDmg)
+          // Baseline worm has 30 mass. Damage of 2.5 requires at least 8 head hits to reach death threshold (mass <= 10)
+          const headDamage = Math.max(2.5, Math.min(6, Math.round(worm.mass * 0.04)))
+          const stolenMass = Math.max(1, Math.round(headDamage * 0.6))
+          worm.mass = Math.max(5, worm.mass - headDamage)
 
           const shooter = allWorms.find((w) => w.id === proj.ownerId)
           if (shooter && !shooter.isDead) {
@@ -1170,7 +1173,7 @@ export default class BioWarScene extends Phaser.Scene {
             }
           }
 
-          if (worm.mass <= 18) {
+          if (worm.mass <= KILL_MASS_THRESHOLD) {
             this.killWorm(worm, shooter || null, 'shot')
           }
           break
@@ -1186,10 +1189,10 @@ export default class BioWarScene extends Phaser.Scene {
             worm.lastDamagerId = proj.ownerId
             worm.lastDamageTime = Date.now()
 
-            // 10% mass/XP siphon on tail hit
-            const stolenMass = Math.max(2, Math.round(worm.mass * 0.10))
-            const totalDmg = Math.max(Math.floor(proj.damage * 0.75), stolenMass)
-            worm.mass = Math.max(15, worm.mass - totalDmg)
+            // Tail hit deals ~1.5 damage (requires ~14 tail hits to kill)
+            const tailDamage = Math.max(1.5, Math.min(4, Math.round(worm.mass * 0.025)))
+            const stolenMass = Math.max(1, Math.round(tailDamage * 0.6))
+            worm.mass = Math.max(5, worm.mass - tailDamage)
 
             const shooter = allWorms.find((w) => w.id === proj.ownerId)
             if (shooter && !shooter.isDead) {
@@ -1199,7 +1202,7 @@ export default class BioWarScene extends Phaser.Scene {
               }
             }
 
-            if (worm.mass <= 18) {
+            if (worm.mass <= KILL_MASS_THRESHOLD) {
               this.killWorm(worm, shooter || null, 'shot')
             }
             break
