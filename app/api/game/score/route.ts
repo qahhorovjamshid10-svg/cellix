@@ -4,9 +4,9 @@ import { checkPersistentRateLimit, getRequestRateLimitKey } from '@/lib/ratelimi
 import {
   hashSessionToken,
   isSessionExpired,
-  validateScoreSubmission,
   verifySessionToken,
 } from '@/lib/security'
+import { validateRunProgression } from '@/lib/game/serverValidation'
 import { getCellLevelForXp, getRunProgressionXp } from '@/lib/game/progression'
 import { calculateRunCoinReward } from '@/lib/game/cosmetics'
 import { getAuthenticatedPlayer } from '@/lib/auth'
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       criticalHits,
       bossDefeated,
       mutations,
+      events,
     } = body as Record<string, unknown>
 
     if (typeof token !== 'string' || token.length > 512) {
@@ -124,19 +125,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Run session expired.' }, { status: 401 })
     }
 
-    // Anti-Cheat density & sanity check
-    const validation = validateScoreSubmission({
-      score: Math.floor(score),
-      level: normalizedLevel,
-      kills: normalizedKills,
-      survivalTime: normalizedSurvivalTime,
-      gameMode: normalizedGameMode,
-      startTime: tokenData.startTime,
-    })
+    // Comprehensive server-side anti-cheat validation
+    const parsedEvents = Array.isArray(events)
+      ? events.filter((e): e is { type: string; t: number } => typeof e === 'object' && e !== null && typeof (e as { type?: unknown }).type === 'string' && typeof (e as { t?: unknown }).t === 'number')
+      : undefined
 
-    if (!validation.valid) {
-      return NextResponse.json({ error: `Anti-cheat rejection: ${validation.reason}` }, { status: 400 })
+    const validation = validateRunProgression(
+      runSession,
+      {
+        score: Math.floor(score),
+        level: normalizedLevel,
+        kills: normalizedKills,
+        survivalTime: normalizedSurvivalTime,
+        gameMode: normalizedGameMode,
+        wave: normalizedWave,
+        damageDealt: normalizedDamageDealt,
+        damageTaken: normalizedDamageTaken,
+        criticalHits: normalizedCriticalHits,
+        bossDefeated: bossDefeated === true,
+        mutations: Array.isArray(mutations) ? (mutations as string[]) : [],
+        events: parsedEvents,
+      }
+    )
+
+    if (validation.status === 'rejected') {
+      return NextResponse.json({ error: `Anti-cheat rejection: ${validation.reason || 'Plausibility check failed'}` }, { status: 400 })
     }
+
+    const isSuspicious = validation.status === 'suspicious'
 
     if (!authenticatedPlayer) {
       return NextResponse.json({ error: 'Authentication required to submit score.' }, { status: 401 })
@@ -152,23 +168,28 @@ export async function POST(req: Request) {
     const player = authenticatedPlayer
 
     const challengeDate = normalizedGameMode === 'daily' ? runSession.challengeDate : null
-    const rewardXp = getRunProgressionXp({
-      level: normalizedLevel,
-      kills: normalizedKills,
-      survivalTime: normalizedSurvivalTime,
-    })
-    const coinReward = calculateRunCoinReward({
-      score: Math.floor(score),
-      kills: normalizedKills,
-      survivalTime: normalizedSurvivalTime,
-      gameMode: normalizedGameMode,
-    })
+    const rewardXp = isSuspicious
+      ? 0
+      : getRunProgressionXp({
+          level: normalizedLevel,
+          kills: normalizedKills,
+          survivalTime: normalizedSurvivalTime,
+        })
+    const coinReward = isSuspicious
+      ? 0
+      : calculateRunCoinReward({
+          score: Math.floor(score),
+          kills: normalizedKills,
+          survivalTime: normalizedSurvivalTime,
+          gameMode: normalizedGameMode,
+        })
+
     const result = await prisma.$transaction(
       async (tx) => {
         const claimed = await tx.runSession.updateMany({
           where: { id: runSession.id, status: 'active' },
           data: {
-            status: 'finished',
+            status: isSuspicious ? 'suspicious' : 'finished',
             finishedAt: new Date(),
             playerId: player.id,
           },
@@ -211,6 +232,8 @@ export async function POST(req: Request) {
             bossDefeated: bossDefeated === true,
             mutations: JSON.stringify(Array.isArray(mutations) ? mutations : []),
             challengeDate,
+            validationStatus: isSuspicious ? 'suspicious' : 'valid',
+            validationFlag: validation.flag || null,
           },
         })
 
@@ -222,7 +245,7 @@ export async function POST(req: Request) {
           update: { totalXp, cellLevel: getCellLevelForXp(totalXp) },
         })
 
-        if (normalizedGameMode === 'daily' && challengeDate) {
+        if (!isSuspicious && normalizedGameMode === 'daily' && challengeDate) {
           await tx.dailyResult.upsert({
             where: {
               playerId_challengeDate: {
@@ -247,42 +270,49 @@ export async function POST(req: Request) {
           })
         }
 
-        const updatedPlayer = await tx.player.update({
-          where: { id: player.id },
-          data: { coins: { increment: coinReward } },
-          select: { coins: true },
-        })
-
-        const existingHighScore = await tx.highScore.findFirst({
-          where: { playerId: player.id, gameMode: normalizedGameMode, challengeDate },
-          orderBy: { score: 'desc' },
-        })
+        const updatedPlayer = coinReward > 0
+          ? await tx.player.update({
+              where: { id: player.id },
+              data: { coins: { increment: coinReward } },
+              select: { coins: true },
+            })
+          : await tx.player.findUniqueOrThrow({
+              where: { id: player.id },
+              select: { coins: true },
+            })
 
         let isNewRecord = false
-        if (!existingHighScore) {
-          await tx.highScore.create({
-            data: {
-              playerId: player.id,
-              score: Math.floor(score),
-              level: normalizedLevel,
-              kills: normalizedKills,
-              survivalTime: normalizedSurvivalTime,
-              gameMode: normalizedGameMode,
-              challengeDate,
-            },
+        if (!isSuspicious) {
+          const existingHighScore = await tx.highScore.findFirst({
+            where: { playerId: player.id, gameMode: normalizedGameMode, challengeDate },
+            orderBy: { score: 'desc' },
           })
-          isNewRecord = true
-        } else if (Math.floor(score) > existingHighScore.score) {
-          await tx.highScore.update({
-            where: { id: existingHighScore.id },
-            data: {
-              score: Math.floor(score),
-              level: normalizedLevel,
-              kills: normalizedKills,
-              survivalTime: normalizedSurvivalTime,
-            },
-          })
-          isNewRecord = true
+
+          if (!existingHighScore) {
+            await tx.highScore.create({
+              data: {
+                playerId: player.id,
+                score: Math.floor(score),
+                level: normalizedLevel,
+                kills: normalizedKills,
+                survivalTime: normalizedSurvivalTime,
+                gameMode: normalizedGameMode,
+                challengeDate,
+              },
+            })
+            isNewRecord = true
+          } else if (Math.floor(score) > existingHighScore.score) {
+            await tx.highScore.update({
+              where: { id: existingHighScore.id },
+              data: {
+                score: Math.floor(score),
+                level: normalizedLevel,
+                kills: normalizedKills,
+                survivalTime: normalizedSurvivalTime,
+              },
+            })
+            isNewRecord = true
+          }
         }
 
         return { session, isNewRecord, progression, coinBalance: updatedPlayer.coins }
@@ -295,6 +325,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      suspicious: isSuspicious,
+      validationFlag: validation.flag,
       session: result.session,
       isNewRecord: result.isNewRecord,
       progression: result.progression,

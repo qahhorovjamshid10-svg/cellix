@@ -154,8 +154,8 @@ export default function MobileControls({
 
       {/* ═══ Left: Movement Joystick ═══ */}
       <div className="absolute pointer-events-auto" style={{ touchAction: 'none', left: 'max(1rem, env(safe-area-inset-left))', bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
-        <div className="text-center mb-1">
-          <span className="text-[9px] font-mono font-bold text-cyan-400/70 uppercase tracking-widest">YURISH</span>
+        <div className="mb-1 text-center">
+          <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-acid/80">YURISH</span>
         </div>
         <div
           ref={moveRef}
@@ -163,17 +163,17 @@ export default function MobileControls({
           onTouchMove={onMoveMove}
           onTouchEnd={onMoveEnd}
           onTouchCancel={onMoveEnd}
-          className="h-28 w-28 rounded-full border-2 border-cyan-500/40 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center relative"
+          className="relative flex h-28 w-28 items-center justify-center rounded-full border border-acid/50 bg-ink/80"
           style={{ touchAction: 'none' }}
         >
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="absolute top-2 text-cyan-500/30 text-[8px] font-mono">▲</div>
-            <div className="absolute bottom-2 text-cyan-500/30 text-[8px] font-mono">▼</div>
-            <div className="absolute left-2.5 text-cyan-500/30 text-[8px] font-mono">◄</div>
-            <div className="absolute right-2.5 text-cyan-500/30 text-[8px] font-mono">►</div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[8px] text-acid/40">
+            <div className="absolute top-2">▲</div>
+            <div className="absolute bottom-2">▼</div>
+            <div className="absolute left-2.5">◄</div>
+            <div className="absolute right-2.5">►</div>
           </div>
           <div
-            className="h-12 w-12 rounded-full bg-cyan-400/70 shadow-[0_0_12px_rgba(0,240,255,0.7)] transition-transform duration-75"
+            className="h-12 w-12 rounded-full border border-acid bg-acid/80 transition-transform duration-75"
             style={{ transform: `translate(${moveKnob.x}px, ${moveKnob.y}px)` }}
           />
         </div>
@@ -183,7 +183,7 @@ export default function MobileControls({
       <div className="absolute pointer-events-auto flex flex-col items-center gap-2" style={{ touchAction: 'none', right: 'max(1rem, env(safe-area-inset-right))', bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
 
         {/* Action Buttons Row */}
-        <div className="flex items-center gap-3 mb-1">
+        <div className="mb-1 flex items-center gap-3">
           {/* DASH BUTTON */}
           <button
             type="button"
@@ -195,20 +195,19 @@ export default function MobileControls({
               haptic(40)
               onDash()
             }}
-            className={`h-14 w-14 rounded-2xl border-2 flex flex-col items-center justify-center font-mono transition-all active:scale-90 ${
+            className={`v-chamfer-sm flex h-14 w-14 flex-col items-center justify-center border font-mono transition-transform active:scale-90 ${
               dashCdPct >= 1
-                ? 'bg-cyan-500/90 text-slate-950 border-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.5)]'
-                : 'bg-slate-900/80 text-slate-600 border-slate-700'
+                ? 'border-acid bg-acid text-ink'
+                : 'border-line bg-ink/80 text-dim'
             }`}
             style={{ touchAction: 'manipulation' }}
           >
             <Zap className="h-5 w-5" />
-            <span className="text-[7px] font-bold mt-0.5 leading-none">DASH</span>
+            <span className="mt-0.5 text-[7px] font-bold leading-none">DASH</span>
           </button>
 
           {/* 4-WAY & DIRECTIONAL SPECIAL ABILITY BUTTON */}
-          <div className="relative h-14 w-14 flex items-center justify-center">
-            {/* Main Center Button: fires 4-Way Cross (Right, Left, Up, Down) or towards current aim */}
+          <div className="relative flex h-14 w-14 items-center justify-center">
             <button
               type="button"
               aria-label="Special ability (4-Way Cross or Aim Direction)"
@@ -220,21 +219,20 @@ export default function MobileControls({
                 if (isAiming && (aimKnob.x !== 0 || aimKnob.y !== 0)) {
                   onSpecial({ x: aimKnob.x, y: aimKnob.y })
                 } else {
-                  onSpecial() // 4-way cross blast (Right, Left, Up, Down simultaneously)
+                  onSpecial()
                 }
               }}
-              className={`h-full w-full rounded-2xl border-2 flex flex-col items-center justify-center font-mono transition-all active:scale-90 relative overflow-hidden ${
+              className={`v-chamfer-sm relative flex h-full w-full flex-col items-center justify-center overflow-hidden border font-mono transition-transform active:scale-90 ${
                 specCdPct >= 1
-                  ? 'bg-purple-600/90 text-white border-purple-300 shadow-[0_0_15px_rgba(176,38,255,0.6)]'
-                  : 'bg-slate-900/80 text-slate-600 border-slate-700'
+                  ? 'border-tide bg-tide text-ink'
+                  : 'border-line bg-ink/80 text-dim'
               }`}
               style={{ touchAction: 'manipulation' }}
             >
               <Sparkles className="h-4 w-4" />
-              <span className="text-[6.5px] font-bold mt-0.5 leading-none">4-WAY</span>
+              <span className="mt-0.5 text-[6.5px] font-bold leading-none">4-WAY</span>
             </button>
 
-            {/* Quick Cardinal Direction Wings: ▲ Tepa, ▼ Past, ◄ Chap, ► O'ng */}
             {specCdPct >= 1 && (
               <>
                 <button
@@ -246,7 +244,7 @@ export default function MobileControls({
                     haptic(35)
                     onSpecial({ x: 0, y: -1 })
                   }}
-                  className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-6 h-3.5 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                  className="absolute -top-2.5 left-1/2 flex h-3.5 w-6 -translate-x-1/2 items-center justify-center border border-ink bg-tide text-[7px] font-bold text-ink active:scale-90"
                 >
                   ▲
                 </button>
@@ -259,7 +257,7 @@ export default function MobileControls({
                     haptic(35)
                     onSpecial({ x: 0, y: 1 })
                   }}
-                  className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-6 h-3.5 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                  className="absolute -bottom-2.5 left-1/2 flex h-3.5 w-6 -translate-x-1/2 items-center justify-center border border-ink bg-tide text-[7px] font-bold text-ink active:scale-90"
                 >
                   ▼
                 </button>
@@ -272,7 +270,7 @@ export default function MobileControls({
                     haptic(35)
                     onSpecial({ x: -1, y: 0 })
                   }}
-                  className="absolute top-1/2 -left-2.5 -translate-y-1/2 w-3.5 h-6 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                  className="absolute left-[-10px] top-1/2 flex h-6 w-3.5 -translate-y-1/2 items-center justify-center border border-ink bg-tide text-[7px] font-bold text-ink active:scale-90"
                 >
                   ◄
                 </button>
@@ -285,7 +283,7 @@ export default function MobileControls({
                     haptic(35)
                     onSpecial({ x: 1, y: 0 })
                   }}
-                  className="absolute top-1/2 -right-2.5 -translate-y-1/2 w-3.5 h-6 bg-purple-500/90 border border-purple-300 rounded text-[7px] font-bold text-white flex items-center justify-center shadow active:scale-90"
+                  className="absolute right-[-10px] top-1/2 flex h-6 w-3.5 -translate-y-1/2 items-center justify-center border border-ink bg-tide text-[7px] font-bold text-ink active:scale-90"
                 >
                   ►
                 </button>
@@ -295,9 +293,9 @@ export default function MobileControls({
         </div>
 
         {/* Aim & Shoot Joystick */}
-        <div className="text-center mb-1">
-          <span className={`text-[9px] font-mono font-bold uppercase tracking-widest ${isAiming ? 'text-rose-400' : 'text-rose-400/70'}`}>
-            {isAiming ? '🔥 OTILMOQDA' : 'NISHON & OTISH'}
+        <div className="mb-1 text-center">
+          <span className={`font-mono text-[9px] font-bold uppercase tracking-widest ${isAiming ? 'text-ember' : 'text-ember/75'}`}>
+            {isAiming ? 'OTILMOQDA' : 'NISHON & OTISH'}
           </span>
         </div>
         <div
@@ -306,27 +304,25 @@ export default function MobileControls({
           onTouchMove={onAimMove}
           onTouchEnd={onAimEnd}
           onTouchCancel={onAimEnd}
-          className={`h-28 w-28 rounded-full border-2 backdrop-blur-sm flex items-center justify-center relative transition-all duration-150 ${
+          className={`relative flex h-28 w-28 items-center justify-center rounded-full border transition-colors duration-150 ${
             isAiming
-              ? 'border-rose-400 bg-rose-950/50 shadow-[0_0_25px_rgba(255,0,85,0.4)]'
-              : 'border-rose-500/40 bg-slate-950/50 shadow-[0_0_20px_rgba(255,0,85,0.15)]'
+              ? 'border-ember bg-ember/20'
+              : 'border-ember/50 bg-ink/80'
           }`}
           style={{ touchAction: 'none' }}
         >
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Crosshair className={`h-8 w-8 transition-all duration-150 ${isAiming ? 'text-rose-400/60 scale-125' : 'text-rose-500/25'}`} />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <Crosshair className={`h-8 w-8 transition-transform duration-150 ${isAiming ? 'scale-125 text-ember/80' : 'text-ember/30'}`} />
           </div>
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="absolute top-2 text-rose-500/30 text-[8px] font-mono">▲</div>
-            <div className="absolute bottom-2 text-rose-500/30 text-[8px] font-mono">▼</div>
-            <div className="absolute left-2.5 text-rose-500/30 text-[8px] font-mono">◄</div>
-            <div className="absolute right-2.5 text-rose-500/30 text-[8px] font-mono">►</div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[8px] text-ember/40">
+            <div className="absolute top-2">▲</div>
+            <div className="absolute bottom-2">▼</div>
+            <div className="absolute left-2.5">◄</div>
+            <div className="absolute right-2.5">►</div>
           </div>
           <div
-            className={`h-12 w-12 rounded-full transition-transform duration-75 ${
-              isAiming
-                ? 'bg-rose-500 shadow-[0_0_18px_rgba(255,0,85,0.8)]'
-                : 'bg-rose-500/70 shadow-[0_0_12px_rgba(255,0,85,0.5)]'
+            className={`h-12 w-12 rounded-full border border-ember transition-transform duration-75 ${
+              isAiming ? 'bg-ember' : 'bg-ember/75'
             }`}
             style={{ transform: `translate(${aimKnob.x}px, ${aimKnob.y}px)` }}
           />

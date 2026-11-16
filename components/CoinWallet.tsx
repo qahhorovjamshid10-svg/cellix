@@ -10,6 +10,35 @@ import {
   type CellSkinId,
 } from '@/lib/game/cosmetics'
 
+let inFlightEconomyFetch: Promise<void> | null = null
+let lastEconomyFetchAt = 0
+
+function fetchEconomyOnce() {
+  const now = Date.now()
+  if (inFlightEconomyFetch) return inFlightEconomyFetch
+  if (now - lastEconomyFetchAt < 4000) return Promise.resolve()
+
+  lastEconomyFetchAt = now
+  inFlightEconomyFetch = fetch('/api/economy', { cache: 'no-store' })
+    .then((response) => response.json())
+    .then((data: { authenticated?: boolean; coins?: unknown; ownedSkins?: unknown }) => {
+      if (typeof data.coins === 'number') {
+        syncCoinBalance(data.coins)
+      }
+      if (Array.isArray(data.ownedSkins)) {
+        syncOwnedSkinIds(data.ownedSkins.filter((id): id is CellSkinId => typeof id === 'string'))
+      }
+    })
+    .catch(() => {
+      // Anonymous/local mode can continue without a server economy profile.
+    })
+    .finally(() => {
+      inFlightEconomyFetch = null
+    })
+
+  return inFlightEconomyFetch
+}
+
 function subscribeToCoins(callback: () => void) {
   if (typeof window === 'undefined') return () => {}
   window.addEventListener(COINS_CHANGED_EVENT, callback)
@@ -24,26 +53,7 @@ export function useCoinBalance() {
   const balance = useSyncExternalStore(subscribeToCoins, getCoinBalance, () => 0)
 
   useEffect(() => {
-    let cancelled = false
-
-    fetch('/api/economy', { cache: 'no-store' })
-      .then((response) => response.json())
-      .then((data: { authenticated?: boolean; coins?: unknown; ownedSkins?: unknown }) => {
-        if (cancelled) return
-        if (typeof data.coins === 'number') {
-          syncCoinBalance(data.coins)
-        }
-        if (Array.isArray(data.ownedSkins)) {
-          syncOwnedSkinIds(data.ownedSkins.filter((id): id is CellSkinId => typeof id === 'string'))
-        }
-      })
-      .catch(() => {
-        // Anonymous/local mode can continue without a server economy profile.
-      })
-
-    return () => {
-      cancelled = true
-    }
+    void fetchEconomyOnce()
   }, [])
 
   return balance
@@ -56,14 +66,14 @@ export default function CoinWallet({ compact = false, balanceOverride }: { compa
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-950/40 font-mono font-bold text-amber-300 ${
-        compact ? 'px-2.5 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'
+      className={`v-chamfer-sm inline-flex items-center gap-2 border border-gold/35 bg-ink-2 font-mono font-bold text-gold transition-colors hover:border-gold ${
+        compact ? 'px-3 py-1.5 text-[11px]' : 'px-4 py-2 text-xs'
       }`}
       title={`${safeBalance.toLocaleString()} coins`}
     >
-      <Coins className={compact ? 'h-3.5 w-3.5 text-amber-400' : 'h-4 w-4 text-amber-400'} />
-      <span>{safeBalance.toLocaleString()}</span>
-      {!compact && <span className="text-[10px] text-amber-400/70">COINS</span>}
+      <Coins className={compact ? 'h-3.5 w-3.5 text-gold' : 'h-4 w-4 text-gold'} />
+      <span className="tabular-nums tracking-wider">{safeBalance.toLocaleString()}</span>
+      {!compact && <span className="v-label !text-gold/70">CR</span>}
     </div>
   )
 }

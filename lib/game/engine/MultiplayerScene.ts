@@ -100,11 +100,11 @@ export class MultiplayerScene extends Phaser.Scene {
 
     this.p1 = this.physics.add.sprite(ARENA.width / 2 - 140, ARENA.height / 2, `char_${p1Skin.id}`)
     this.p1.setCollideWorldBounds(true)
-    this.p1.setCircle(PLAYER.hitboxRadius, 10, 10)
+    this.p1.setCircle(PLAYER.hitboxRadius, 18, 18)
 
     this.p2 = this.physics.add.sprite(ARENA.width / 2 + 140, ARENA.height / 2, `char_${p2Skin.id}`)
     this.p2.setCollideWorldBounds(true)
-    this.p2.setCircle(PLAYER.hitboxRadius, 10, 10)
+    this.p2.setCircle(PLAYER.hitboxRadius, 18, 18)
 
     // Camera centered on midpoint between P1 and P2
     this.cameras.main.setBounds(0, 0, ARENA.width, ARENA.height)

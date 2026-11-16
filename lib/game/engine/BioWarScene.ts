@@ -1,9 +1,13 @@
 import Phaser from 'phaser'
 import { soundManager } from './SoundManager'
-import { getSelectedSkinId, getSkinConfig, type CellSkinId } from '../cosmetics'
+import { getArenaThemePalette, getSelectedSkinId, getSkinConfig, type CellSkin, type CellSkinId } from '../cosmetics'
+import type { CellModel3DType } from '../types'
+import { BioWarNetworkClient } from '../biowarNetwork'
+import { getGameSettings, getParticleCapForQuality } from '../settings'
+import { safeCameraShake } from './ArenaCombatHelper'
 
 // ============================================================
-// CELLIX v1.2 — BIO-WAR 30 (30-Player IO Snake + Shooter Arena)
+// CELLIX 2.0 — BIO-WAR 30 (Realtime Multiplayer + Bot Fallback)
 // ============================================================
 
 export interface BioWarLeaderboardEntry {
@@ -49,9 +53,13 @@ export interface BioWarHUDData {
   coinsEarned?: number
   recentKillEvent?: { id: string; victimName: string; massGained: number; comboCount: number }
   autoAimActive?: boolean
+  humanPlayers?: number
+  botPlayers?: number
+  isOnlineMultiplayer?: boolean
 }
 
 export interface BioWarSceneConfig {
+  onReady?: () => void
   onBioWarUpdate?: (data: BioWarHUDData) => void
   onGameOver?: (metrics: {
     score: number
@@ -91,6 +99,9 @@ interface WormEntity {
   headRadius: number
   primaryColor: number
   secondaryColor: number
+  accentColor?: number
+  projectileColor?: number
+  model3dType?: CellModel3DType
   tail: TailSegment[]
   history: { x: number; y: number }[]
   kills: number
@@ -178,6 +189,7 @@ export default class BioWarScene extends Phaser.Scene {
   private food: FoodOrb[] = []
   private projectiles: BioProjectile[] = []
   private killFeed: BioWarKillEvent[] = []
+  private networkClient?: BioWarNetworkClient
 
   // Graphics renderers
   private arenaGraphics!: Phaser.GameObjects.Graphics
@@ -221,6 +233,11 @@ export default class BioWarScene extends Phaser.Scene {
   private lastEarnedCoins: number = 0
   private foodSpawnTimer: number = 0
   private foodRecycleTimer: number = 0
+  private nextBotUid: number = 1
+  private scoreSavedThisLife: boolean = false
+  private playerSkin!: CellSkin
+  private resizeHandler?: () => void
+  private uiPaused: boolean = false
 
   constructor() {
     super('BioWarScene')
@@ -236,6 +253,7 @@ export default class BioWarScene extends Phaser.Scene {
     this.roundTimeRemaining = ROUND_DURATION_SEC
     this.sessionStartTime = Date.now()
     this.peakMass = 30
+    this.nextBotUid = 1
 
     // Physics world bounds
     this.physics.world.setBounds(0, 0, ARENA_SIZE, ARENA_SIZE)
@@ -245,6 +263,7 @@ export default class BioWarScene extends Phaser.Scene {
 
     // Setup input listeners
     this.mousePointer = this.input.activePointer
+    this.input.mouse?.disableContextMenu()
     if (this.input.keyboard) {
       this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W)
@@ -271,17 +290,59 @@ export default class BioWarScene extends Phaser.Scene {
     this.spawnPlayer()
     this.spawnInitialBots()
 
-    // Camera initial settings
+    // Camera initial settings & resize cleanup
     this.cameras.main.setBounds(0, 0, ARENA_SIZE, ARENA_SIZE)
-    const screenFactor = Math.min(this.scale.width, this.scale.height) / 800
-    this.cameras.main.setZoom(Phaser.Math.Clamp(1.1 * screenFactor, 0.55, 1.2))
+    const updateCameraZoom = () => {
+      if (!this.cameras?.main) return
+      const screenFactor = Math.min(this.scale.width, this.scale.height) / 800
+      this.cameras.main.setZoom(Phaser.Math.Clamp(1.1 * screenFactor, 0.55, 1.2))
+    }
+    updateCameraZoom()
+    this.resizeHandler = updateCameraZoom
+    this.scale.on('resize', this.resizeHandler)
+
+    this.events.once('shutdown', () => this.cleanupScene())
+    this.events.once('destroy', () => this.cleanupScene())
+
+    // Initialize realtime multiplayer network connector (falls back to local simulation if offline)
+    this.networkClient = new BioWarNetworkClient({
+      onStatusChange: () => {
+        this.emitHUD()
+      },
+    })
+    this.networkClient.connect(undefined, this.player.id, this.configCallbacks?.playerName)
+
+    this.configCallbacks?.onReady?.()
+  }
+
+  private cleanupScene() {
+    if (this.resizeHandler) {
+      this.scale.off('resize', this.resizeHandler)
+      this.resizeHandler = undefined
+    }
+    this.networkClient?.disconnect()
+    if (this.player?.nameText) {
+      this.player.nameText.destroy()
+      this.player.nameText = undefined
+    }
+    for (const b of this.bots) {
+      if (b.nameText) {
+        b.nameText.destroy()
+        b.nameText = undefined
+      }
+    }
   }
 
   private drawArenaEnvironment() {
     this.arenaGraphics.clear()
+    const palette = getArenaThemePalette('biowar')
 
-    // 1. Cyber Grid lines
-    this.arenaGraphics.lineStyle(1, 0x1e293b, 0.4)
+    // 0. Abyssal floor fill
+    this.arenaGraphics.fillStyle(palette.floorHex, 1)
+    this.arenaGraphics.fillRect(0, 0, ARENA_SIZE, ARENA_SIZE)
+
+    // 1. Cyber Grid lines (Biowar Deep Teal)
+    this.arenaGraphics.lineStyle(1, palette.gridHex, 0.65)
     const gridSize = 120
     for (let x = 0; x <= ARENA_SIZE; x += gridSize) {
       this.arenaGraphics.lineBetween(x, 0, x, ARENA_SIZE)
@@ -290,12 +351,17 @@ export default class BioWarScene extends Phaser.Scene {
       this.arenaGraphics.lineBetween(0, y, ARENA_SIZE, y)
     }
 
-    // 2. High-Tech Hexagonal Outer Boundary (Lethal Neon Barrier)
-    this.arenaGraphics.lineStyle(8, 0xef4444, 0.85)
+    // Center tactical radar rings
+    this.arenaGraphics.lineStyle(1.5, palette.accentHex, 0.16)
+    this.arenaGraphics.strokeCircle(ARENA_SIZE / 2, ARENA_SIZE / 2, 420)
+    this.arenaGraphics.strokeCircle(ARENA_SIZE / 2, ARENA_SIZE / 2, 950)
+
+    // 2. High-Tech Containment Outer Boundary (Lethal Neon Barrier + Inner Teal)
+    this.arenaGraphics.lineStyle(8, palette.borderHex, 0.85)
     this.arenaGraphics.strokeRect(4, 4, ARENA_SIZE - 8, ARENA_SIZE - 8)
 
-    this.arenaGraphics.lineStyle(2, 0xfca5a5, 0.6)
-    this.arenaGraphics.strokeRect(6, 6, ARENA_SIZE - 12, ARENA_SIZE - 12)
+    this.arenaGraphics.lineStyle(2, palette.borderGlowHex, 0.65)
+    this.arenaGraphics.strokeRect(14, 14, ARENA_SIZE - 28, ARENA_SIZE - 28)
   }
 
   private createFoodOrb(x?: number, y?: number, color?: number, value?: number, radius?: number): FoodOrb {
@@ -322,6 +388,8 @@ export default class BioWarScene extends Phaser.Scene {
   private spawnPlayer() {
     const skinId = this.configCallbacks?.initialSkin || getSelectedSkinId()
     const skin = getSkinConfig(skinId)
+    this.playerSkin = skin
+    this.scoreSavedThisLife = false
 
     const spawnX = Phaser.Math.Between(800, ARENA_SIZE - 800)
     const spawnY = Phaser.Math.Between(800, ARENA_SIZE - 800)
@@ -345,10 +413,13 @@ export default class BioWarScene extends Phaser.Scene {
       turnSpeed: 0.12,
       baseSpeed: 230,
       speed: 230,
-      mass: 30, // Initial baseline mass (requires 8 head hits or 14 tail hits to kill)
-      headRadius: 12, // Initial head radius
+      mass: 30,
+      headRadius: 12,
       primaryColor: skin.primaryColor,
-      secondaryColor: skin.accentColor,
+      secondaryColor: skin.secondaryColor,
+      accentColor: skin.accentColor,
+      projectileColor: skin.projectileColor,
+      model3dType: skin.model3dType,
       tail: [],
       history: [],
       kills: 0,
@@ -393,7 +464,7 @@ export default class BioWarScene extends Phaser.Scene {
     const initialMass = Phaser.Math.Between(30, 60)
 
     const bot: WormEntity = {
-      id: `bot_${Date.now()}_${index}`,
+      id: `bot_${this.nextBotUid++}`,
       name,
       isPlayer: false,
       x: spawnX,
@@ -409,6 +480,8 @@ export default class BioWarScene extends Phaser.Scene {
       headRadius: 10 + Math.sqrt(initialMass) * 0.22,
       primaryColor: colorScheme.primary,
       secondaryColor: colorScheme.secondary,
+      accentColor: 0xffffff,
+      projectileColor: colorScheme.primary,
       tail: [],
       history: [],
       kills: Phaser.Math.Between(0, 2),
@@ -482,7 +555,8 @@ export default class BioWarScene extends Phaser.Scene {
     this.lastWinnerName = winner ? `${winner.name} (${Math.round(winner.mass)} MASS)` : 'Durang'
 
     // If the player survived this 3-minute round, save score and kills accurately!
-    if (!this.player.isDead) {
+    if (!this.player.isDead && !this.scoreSavedThisLife) {
+      this.scoreSavedThisLife = true
       const isWinner = Boolean(winner && winner.isPlayer)
       const survivalSec = 180
       const finalScore = Math.floor(
@@ -534,7 +608,6 @@ export default class BioWarScene extends Phaser.Scene {
     this.spawnPlayer()
     this.spawnInitialBots()
 
-    // Reset round timer
     this.roundTimeRemaining = ROUND_DURATION_SEC
     this.roundNumber++
     this.peakMass = 30
@@ -545,7 +618,8 @@ export default class BioWarScene extends Phaser.Scene {
   }
 
   public update(time: number, delta: number) {
-    const dt = delta / 1000
+    // Clamp delta to prevent tab-switch teleports, broken tail history, or instant round skips
+    const dt = Math.min(Math.max(delta / 1000, 0.001), 0.05)
 
     // 0. Dynamic Food Spawning & Cycling up to 1500 max (starts small, recycles old)
     this.updateFoodCycling(delta)
@@ -629,18 +703,34 @@ export default class BioWarScene extends Phaser.Scene {
   }
 
   private updatePlayer(dt: number) {
+    const settings = getGameSettings()
+    if (this.uiPaused) {
+      this.player.isBoosting = false
+      this.player.speed = this.player.baseSpeed
+      if (this.networkClient?.status === 'connected') {
+        this.networkClient.sendInput(this.player.angle, false, false)
+      }
+      this.updateWormTail(this.player)
+      if (this.player.nameText) {
+        this.player.nameText.setPosition(this.player.x, this.player.y - this.player.headRadius - 10)
+      }
+      return
+    }
+
     if (this.mobileSteerAngle !== null) {
       // Mobile touch virtual joystick steering
       this.player.targetAngle = this.mobileSteerAngle
     } else {
-      // Determine target angle towards mouse pointer in world coordinates
-      const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y)
-      const dx = worldPoint.x - this.player.x
-      const dy = worldPoint.y - this.player.y
+      if (settings.movementMode !== 'keyboard' && this.mousePointer && this.cameras?.main) {
+        // Determine target angle towards mouse pointer in world coordinates
+        const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y)
+        const dx = worldPoint.x - this.player.x
+        const dy = worldPoint.y - this.player.y
 
-      this.player.targetAngle = Math.atan2(dy, dx)
+        this.player.targetAngle = Math.atan2(dy, dx)
+      }
 
-      // Keyboard alternate steering (WASD)
+      // Keyboard steering (WASD)
       if (this.keyW && (this.keyW.isDown || this.keyA.isDown || this.keyS.isDown || this.keyD.isDown)) {
         let kx = 0
         let ky = 0
@@ -654,11 +744,11 @@ export default class BioWarScene extends Phaser.Scene {
       }
     }
 
-    // Smooth turn towards target angle
+    // Smooth turn towards target angle (scaled by sensitivity setting)
     this.player.angle = Phaser.Math.Angle.RotateTo(
       this.player.angle,
       this.player.targetAngle,
-      this.player.turnSpeed * (dt * 60)
+      this.player.turnSpeed * settings.aimSensitivity * (dt * 60)
     )
 
     // Continuous shooting: Left Mouse Button, Enter key (Auto-Aim), Mobile Laser, or Arrow Keys
@@ -675,7 +765,7 @@ export default class BioWarScene extends Phaser.Scene {
       this.isMobileShooting ||
       isEnterAim ||
       isArrowShooting ||
-      (this.mousePointer.isDown && this.mousePointer.leftButtonDown())
+      (this.mousePointer.isDown && this.mousePointer.leftButtonDown() && !this.mousePointer.wasTouch)
 
     if (wantsShoot) {
       if (this.player.shootCooldown <= 0) {
@@ -683,19 +773,19 @@ export default class BioWarScene extends Phaser.Scene {
       }
     }
 
-    // Speed Boost (Space or RMB or Mobile Nitro button)
+    // Speed Boost (Space or RMB on desktop or Mobile Nitro button)
     const wantsBoost =
       this.isMobileBoosting ||
       (this.spaceKey && this.spaceKey.isDown) ||
-      this.mousePointer.rightButtonDown()
+      (this.mousePointer.rightButtonDown() && !this.mousePointer.wasTouch)
     if (wantsBoost && this.player.boostEnergy > 5 && this.player.mass > 20) {
       this.player.isBoosting = true
       this.player.speed = this.player.baseSpeed * 1.75
       this.player.boostEnergy = Math.max(0, this.player.boostEnergy - 35 * dt)
       this.player.mass = Math.max(12, this.player.mass - 1.8 * dt) // controlled mass burn, cannot kill player
 
-      // Drop hazard trail behind player
-      if (Math.random() < 0.35) {
+      // Drop hazard trail behind player (respect graphics particle budget)
+      if (Math.random() < 0.35 && this.hazardParticles.length < getParticleCapForQuality(settings.graphicsQuality)) {
         this.hazardParticles.push({
           x: this.player.x - Math.cos(this.player.angle) * (this.player.headRadius + 6),
           y: this.player.y - Math.sin(this.player.angle) * (this.player.headRadius + 6),
@@ -715,6 +805,15 @@ export default class BioWarScene extends Phaser.Scene {
     this.player.vy = Math.sin(this.player.angle) * this.player.speed
     this.player.x += this.player.vx * dt
     this.player.y += this.player.vy * dt
+
+    // Forward inputs to authoritative server if connected
+    if (this.networkClient?.status === 'connected') {
+      this.networkClient.sendInput(
+        this.player.targetAngle,
+        this.player.isBoosting,
+        Boolean(this.mousePointer.isDown || isEnterAim || this.isMobileShooting || isArrowShooting)
+      )
+    }
 
     // Boundary check
     this.constrainToArena(this.player)
@@ -780,9 +879,9 @@ export default class BioWarScene extends Phaser.Scene {
       }
     }
 
-    // Maintain 15 bots
-    while (this.bots.filter((b) => !b.isDead).length < TARGET_BOT_COUNT) {
-      this.spawnBot(this.bots.length)
+    // Maintain exactly 15 active/pending bots without duplicating during 2.5s respawn delay
+    while (this.bots.length < TARGET_BOT_COUNT) {
+      this.spawnBot(this.nextBotUid)
     }
   }
 
@@ -1027,7 +1126,7 @@ export default class BioWarScene extends Phaser.Scene {
       vx,
       vy,
       ownerId: shooter.id,
-      color: shooter.primaryColor,
+      color: shooter.projectileColor ?? shooter.primaryColor,
       damage: 2.5, // Balanced: requires at least 8 head hits or 14 tail hits to kill a baseline worm
       lifetime: 1.25,
     })
@@ -1275,12 +1374,13 @@ export default class BioWarScene extends Phaser.Scene {
         }
 
         // Screen shake & satisfying kill audio
-        this.cameras.main.shake(220, 0.009)
+        safeCameraShake(this, 220, 0.009)
         soundManager.playCombo()
       }
     }
 
-    if (victim.isPlayer) {
+    if (victim.isPlayer && !this.scoreSavedThisLife) {
+      this.scoreSavedThisLife = true
       const survivalSec = Math.max(1, Math.floor((Date.now() - this.sessionStartTime) / 1000))
       const finalScore = Math.floor(this.score + this.peakMass * 2 + this.player.kills * 200 + survivalSec * 5)
       const virtualLevel = Math.min(30, Math.floor(this.peakMass / 50) + 1)
@@ -1359,7 +1459,7 @@ export default class BioWarScene extends Phaser.Scene {
       this.hazardTrailGraphics.fillCircle(part.x, part.y, 5)
     }
 
-    // 2. Render Food Orbs (Viewport culled for buttery 60 FPS with 1500 orbs)
+    // 2. Render Food Orbs (Viewport culled 3D specular orbs)
     this.foodGraphics.clear()
     const bounds = this.cameras.main.worldView
     for (const orb of this.food) {
@@ -1371,67 +1471,123 @@ export default class BioWarScene extends Phaser.Scene {
       ) {
         continue
       }
-      const pulse = 1 + Math.sin(time * 0.005 + orb.glowPhase) * 0.15
-      // Outer glow
-      this.foodGraphics.fillStyle(orb.color, 0.25)
-      this.foodGraphics.fillCircle(orb.x, orb.y, orb.radius * pulse + 2.5)
-      // Core
+      const r = orb.radius
+      // Outer bloom
+      this.foodGraphics.fillStyle(orb.color, 0.22)
+      this.foodGraphics.fillCircle(orb.x, orb.y, r + 2.5)
+      // Sphere body
       this.foodGraphics.fillStyle(orb.color, 0.95)
-      this.foodGraphics.fillCircle(orb.x, orb.y, orb.radius * pulse)
+      this.foodGraphics.fillCircle(orb.x, orb.y, r)
+      // 3D specular highlight
+      this.foodGraphics.fillStyle(0xffffff, 0.55)
+      this.foodGraphics.fillCircle(orb.x - r * 0.28, orb.y - r * 0.28, Math.max(1.2, r * 0.35))
     }
 
-    // 3. Render Tails
+    // 3. Render Volumetric 3D Tails
     this.tailGraphics.clear()
     const allWorms = [this.player, ...this.bots].filter((w) => !w.isDead)
 
     for (const worm of allWorms) {
+      const accent = worm.accentColor ?? worm.secondaryColor
       for (let i = worm.tail.length - 1; i >= 0; i--) {
         const seg = worm.tail[i]
-        // Segment glow outline
-        this.tailGraphics.lineStyle(2, worm.secondaryColor, 0.8)
-        this.tailGraphics.strokeCircle(seg.x, seg.y, seg.radius)
-        // Segment core
-        this.tailGraphics.fillStyle(worm.primaryColor, 0.9)
-        this.tailGraphics.fillCircle(seg.x, seg.y, seg.radius - 0.5)
+        // Drop shadow under segment
+        this.tailGraphics.fillStyle(0x000000, 0.35)
+        this.tailGraphics.fillCircle(seg.x - 1.5, seg.y + 3, seg.radius)
+        // Outer shaded rim
+        this.tailGraphics.fillStyle(worm.secondaryColor, 0.95)
+        this.tailGraphics.fillCircle(seg.x, seg.y, seg.radius)
+        // Lit upper-left sphere dome
+        this.tailGraphics.fillStyle(worm.primaryColor, 0.96)
+        this.tailGraphics.fillCircle(seg.x - seg.radius * 0.14, seg.y - seg.radius * 0.14, seg.radius * 0.84)
+        // Dorsal stripe on Leviathan / Helix skin or every 2nd segment highlight
+        if (i % 2 === 0 || worm.model3dType === 'leviathan_apex') {
+          this.tailGraphics.fillStyle(accent, 0.55)
+          this.tailGraphics.fillCircle(seg.x, seg.y, Math.max(2, seg.radius * 0.36))
+        }
+        // Specular sheen
+        this.tailGraphics.fillStyle(0xffffff, 0.35)
+        this.tailGraphics.fillCircle(seg.x - seg.radius * 0.34, seg.y - seg.radius * 0.34, Math.max(1.4, seg.radius * 0.28))
       }
     }
 
-    // 4. Render Heads
+    // 4. Render 3D Heads + Skin-Specific Accessories
     this.headGraphics.clear()
     for (const worm of allWorms) {
-      // Glow ring
-      this.headGraphics.fillStyle(worm.secondaryColor, worm.isBoosting ? 0.45 : 0.25)
-      this.headGraphics.fillCircle(worm.x, worm.y, worm.headRadius + (worm.isBoosting ? 5 : 2.5))
+      const r = worm.headRadius
+      const accent = worm.accentColor ?? worm.secondaryColor
+      const cos = Math.cos(worm.angle)
+      const sin = Math.sin(worm.angle)
+      const px = -sin
+      const py = cos
 
-      // Head body
+      // Shadow underneath head
+      this.headGraphics.fillStyle(0x000000, 0.42)
+      this.headGraphics.fillCircle(worm.x - 2, worm.y + 4, r + 1.5)
+
+      // Boost / Arena glow ring
+      this.headGraphics.fillStyle(accent, worm.isBoosting ? 0.38 : 0.18)
+      this.headGraphics.fillCircle(worm.x, worm.y, r + (worm.isBoosting ? 6 : 3))
+
+      // Model-specific 3D side mandibles / cannons / gimbal ring
+      if (worm.model3dType === 'leviathan_apex') {
+        this.headGraphics.fillStyle(worm.secondaryColor, 1)
+        this.headGraphics.fillTriangle(
+          worm.x + px * r * 0.7, worm.y + py * r * 0.7,
+          worm.x + cos * (r + 12) + px * (r * 0.45), worm.y + sin * (r + 12) + py * (r * 0.45),
+          worm.x + cos * 6 + px * (r * 0.95), worm.y + sin * 6 + py * (r * 0.95)
+        )
+        this.headGraphics.fillTriangle(
+          worm.x - px * r * 0.7, worm.y - py * r * 0.7,
+          worm.x + cos * (r + 12) - px * (r * 0.45), worm.y + sin * (r + 12) - py * (r * 0.45),
+          worm.x + cos * 6 - px * (r * 0.95), worm.y + sin * 6 - py * (r * 0.95)
+        )
+      } else if (worm.model3dType === 'bastion_mech' || worm.model3dType === 'plasma_core') {
+        this.headGraphics.fillStyle(0x334155, 1)
+        this.headGraphics.fillCircle(worm.x + px * (r * 0.85), worm.y + py * (r * 0.85), r * 0.42)
+        this.headGraphics.fillCircle(worm.x - px * (r * 0.85), worm.y - py * (r * 0.85), r * 0.42)
+        this.headGraphics.fillStyle(accent, 1)
+        this.headGraphics.fillCircle(worm.x + cos * 6 + px * (r * 0.85), worm.y + sin * 6 + py * (r * 0.85), 2.5)
+        this.headGraphics.fillCircle(worm.x + cos * 6 - px * (r * 0.85), worm.y + sin * 6 - py * (r * 0.85), 2.5)
+      } else if (worm.model3dType === 'void_orb' || worm.model3dType === 'chrono_octa') {
+        this.headGraphics.lineStyle(2, accent, 0.8)
+        this.headGraphics.strokeCircle(worm.x, worm.y, r + 5.5)
+      }
+
+      // Base shadowed 3D rim + bright dome
+      this.headGraphics.fillStyle(worm.secondaryColor, 1.0)
+      this.headGraphics.fillCircle(worm.x, worm.y, r)
       this.headGraphics.fillStyle(worm.primaryColor, 1.0)
-      this.headGraphics.fillCircle(worm.x, worm.y, worm.headRadius)
+      this.headGraphics.fillCircle(worm.x - r * 0.14, worm.y - r * 0.14, r * 0.86)
 
-      // Cyber eyes
-      const eyeOffset = worm.headRadius * 0.45
-      const eyeForward = worm.headRadius * 0.35
-      const perpAngle = worm.angle + Math.PI / 2
+      // Center crest motif (Helix / Crown)
+      if (worm.model3dType === 'helix_crystal' || worm.model3dType === 'chrono_octa') {
+        this.headGraphics.fillStyle(accent, 0.9)
+        this.headGraphics.fillCircle(worm.x, worm.y, Math.max(3, r * 0.34))
+      } else if (worm.model3dType === 'crown_sovereign') {
+        this.headGraphics.lineStyle(2, 0xffffff, 0.9)
+        this.headGraphics.strokeCircle(worm.x, worm.y, r * 0.48)
+      }
 
-      const leftEyeX = worm.x + Math.cos(worm.angle) * eyeForward + Math.cos(perpAngle) * eyeOffset
-      const leftEyeY = worm.y + Math.sin(worm.angle) * eyeForward + Math.sin(perpAngle) * eyeOffset
-      const rightEyeX = worm.x + Math.cos(worm.angle) * eyeForward - Math.cos(perpAngle) * eyeOffset
-      const rightEyeY = worm.y + Math.sin(worm.angle) * eyeForward - Math.sin(perpAngle) * eyeOffset
+      // 3D specular highlight crescent
+      this.headGraphics.fillStyle(0xffffff, 0.48)
+      this.headGraphics.fillCircle(worm.x - r * 0.32, worm.y - r * 0.32, Math.max(2, r * 0.3))
+
+      // Cyber eyes / optics
+      const eyeOffset = r * 0.44
+      const eyeForward = r * 0.38
+      const leftEyeX = worm.x + cos * eyeForward + px * eyeOffset
+      const leftEyeY = worm.y + sin * eyeForward + py * eyeOffset
+      const rightEyeX = worm.x + cos * eyeForward - px * eyeOffset
+      const rightEyeY = worm.y + sin * eyeForward - py * eyeOffset
 
       this.headGraphics.fillStyle(0xffffff, 1.0)
-      this.headGraphics.fillCircle(leftEyeX, leftEyeY, Math.max(2.5, worm.headRadius * 0.2))
-      this.headGraphics.fillCircle(rightEyeX, rightEyeY, Math.max(2.5, worm.headRadius * 0.2))
+      this.headGraphics.fillCircle(leftEyeX, leftEyeY, Math.max(2.5, r * 0.21))
+      this.headGraphics.fillCircle(rightEyeX, rightEyeY, Math.max(2.5, r * 0.21))
 
-      this.headGraphics.fillStyle(0x0f172a, 1.0)
-      this.headGraphics.fillCircle(
-        leftEyeX + Math.cos(worm.angle) * 1.2,
-        leftEyeY + Math.sin(worm.angle) * 1.2,
-        Math.max(1.2, worm.headRadius * 0.1)
-      )
-      this.headGraphics.fillCircle(
-        rightEyeX + Math.cos(worm.angle) * 1.2,
-        rightEyeY + Math.sin(worm.angle) * 1.2,
-        Math.max(1.2, worm.headRadius * 0.1)
-      )
+      this.headGraphics.fillStyle(0x090c10, 1.0)
+      this.headGraphics.fillCircle(leftEyeX + cos * 1.2, leftEyeY + sin * 1.2, Math.max(1.2, r * 0.1))
+      this.headGraphics.fillCircle(rightEyeX + cos * 1.2, rightEyeY + sin * 1.2, Math.max(1.2, r * 0.1))
     }
 
     // 5. Render Projectiles (Plasma bolt with motion trail)
@@ -1513,11 +1669,24 @@ export default class BioWarScene extends Phaser.Scene {
       isKing: w.id === kingId,
     }))
 
+    const isOnline = this.networkClient?.status === 'connected'
+    const latestSnap = this.networkClient?.latestSnapshot
+    const humanPlayers = isOnline && latestSnap ? latestSnap.humanCount : 1
+    const botPlayers = isOnline && latestSnap ? latestSnap.botCount : this.bots.filter((b) => !b.isDead).length
+
+    const activeKillEvent =
+      this.recentPlayerKill && Date.now() - this.lastPlayerKillTime < 2500
+        ? this.recentPlayerKill
+        : undefined
+    if (!activeKillEvent && this.recentPlayerKill) {
+      this.recentPlayerKill = undefined
+    }
+
     this.configCallbacks.onBioWarUpdate({
       myMass: Math.round(this.player.mass),
       myKills: this.player.kills,
       myRank: playerRank > 0 ? playerRank : sorted.length + 1,
-      totalPlayers: allWorms.length,
+      totalPlayers: humanPlayers + botPlayers,
       boostPct: this.player.boostEnergy / 100,
       leaderboard,
       killFeed: this.killFeed,
@@ -1529,8 +1698,11 @@ export default class BioWarScene extends Phaser.Scene {
       peakMass: this.peakMass,
       savedScore: this.lastSavedScore,
       coinsEarned: this.lastEarnedCoins,
-      recentKillEvent: this.recentPlayerKill,
+      recentKillEvent: activeKillEvent,
       autoAimActive: Boolean(this.autoAimTarget && (this.isMobileShooting || (this.enterKey && this.enterKey.isDown))),
+      humanPlayers,
+      botPlayers,
+      isOnlineMultiplayer: isOnline,
     })
   }
 
@@ -1547,8 +1719,34 @@ export default class BioWarScene extends Phaser.Scene {
     this.isMobileShooting = isShooting
   }
 
+  public setUiPaused(paused: boolean) {
+    this.uiPaused = paused
+    const isOnline = this.networkClient?.status === 'connected'
+    if (!isOnline && this.scene) {
+      if (paused && this.scene.isActive()) {
+        this.scene.pause()
+      } else if (!paused && this.scene.isPaused()) {
+        this.scene.resume()
+      }
+    }
+  }
+
+  public isOnlineConnected(): boolean {
+    return this.networkClient?.status === 'connected'
+  }
+
+  public restartArenaMatch() {
+    this.uiPaused = false
+    if (this.scene?.isPaused()) {
+      this.scene.resume()
+    }
+    this.respawnPlayer()
+  }
+
   public saveAndEndCurrentRun() {
-    if (!this.player.isDead && (this.player.kills > 0 || this.player.mass > 25)) {
+    this.networkClient?.disconnect()
+    if (!this.player.isDead && !this.scoreSavedThisLife && (this.player.kills > 0 || this.player.mass > 32)) {
+      this.scoreSavedThisLife = true
       const survivalSec = Math.max(1, Math.floor((Date.now() - this.sessionStartTime) / 1000))
       const finalScore = Math.floor(this.peakMass * 2 + this.player.kills * 200 + survivalSec * 5)
       const virtualLevel = Math.min(30, Math.floor(this.peakMass / 50) + 1)

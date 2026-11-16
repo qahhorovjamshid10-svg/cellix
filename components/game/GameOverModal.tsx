@@ -1,13 +1,16 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldAlert, RotateCcw, Trophy, Check, Award, Download, Swords, Coins } from 'lucide-react'
+import { ShieldAlert, RotateCcw, Trophy, Check, Award, Download, Swords, Coins, Home } from 'lucide-react'
 import Link from 'next/link'
 import { checkRunAchievements, saveRunHistory, Achievement } from '@/lib/game/achievements'
 import { useLanguage } from '@/components/LanguageContext'
 import confetti from 'canvas-confetti'
 import { syncCoinBalance } from '@/lib/game/cosmetics'
+import CountUp from '@/components/v26/CountUp'
+import CellixLoader from '@/components/v26/CellixLoader'
 
 interface GameOverModalProps {
   score: number
@@ -26,6 +29,8 @@ interface GameOverModalProps {
   wavesCleared?: number
   runToken: string | null
   onRestart: () => void
+  onExitToModes?: () => void
+  onReturnToHub?: () => void
 }
 
 export default function GameOverModal({
@@ -45,11 +50,16 @@ export default function GameOverModal({
   wavesCleared,
   runToken,
   onRestart,
+  onExitToModes,
+  onReturnToHub,
 }: GameOverModalProps) {
+  const router = useRouter()
   const { lang, t } = useLanguage()
   const isUz = lang === 'uz'
 
-  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'failed'>(runToken ? 'saving' : 'failed')
+  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'failed'>(
+    runToken ? 'saving' : 'failed'
+  )
   const [newAchievements, setNewAchievements] = useState<Achievement[]>([])
   const [downloadedCard, setDownloadedCard] = useState(false)
   const [coinsEarned, setCoinsEarned] = useState(0)
@@ -62,7 +72,6 @@ export default function GameOverModal({
 
   const hasRun = useRef(false)
 
-  // Save run history and check achievements on mount
   useEffect(() => {
     if (hasRun.current) return
     hasRun.current = true
@@ -101,12 +110,24 @@ export default function GameOverModal({
         // ignore
       }
     }
-
-  }, [score, level, kills, survivalTime, gameMode, isVictory, wave, wavesCleared, damageDealt, damageTaken, criticalHits, bossDefeated, combosCount])
+  }, [
+    score,
+    level,
+    kills,
+    survivalTime,
+    gameMode,
+    isVictory,
+    wave,
+    wavesCleared,
+    damageDealt,
+    damageTaken,
+    criticalHits,
+    bossDefeated,
+    combosCount,
+  ])
 
   const saveAttempted = useRef(false)
 
-  // Submit the run automatically when the Game Over modal appears.
   useEffect(() => {
     if (!runToken || saveAttempted.current) return
 
@@ -129,6 +150,7 @@ export default function GameOverModal({
             criticalHits,
             bossDefeated,
             gameMode,
+            wave: gameMode === 'survival' ? (wave ?? wavesCleared ?? 0) : 0,
             token: runToken,
           }),
         })
@@ -161,9 +183,23 @@ export default function GameOverModal({
     }
 
     void saveRun()
-  }, [score, level, kills, survivalTime, mutationsCount, damageDealt, damageTaken, criticalHits, bossDefeated, gameMode, runToken])
+  }, [
+    score,
+    level,
+    kills,
+    survivalTime,
+    mutationsCount,
+    damageDealt,
+    damageTaken,
+    criticalHits,
+    bossDefeated,
+    wave,
+    wavesCleared,
+    gameMode,
+    runToken,
+  ])
 
-  // Generate Cyberpunk Share Card (PNG)
+  // Generate 2026 BIOLUMEN Share Card (PNG)
   const handleExportCard = () => {
     const canvas = document.createElement('canvas')
     canvas.width = 800
@@ -171,83 +207,71 @@ export default function GameOverModal({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Background Gradient
-    const bgGrad = ctx.createLinearGradient(0, 0, 800, 450)
-    bgGrad.addColorStop(0, '#040416')
-    bgGrad.addColorStop(0.5, '#0d0d2b')
-    bgGrad.addColorStop(1, '#06061e')
-    ctx.fillStyle = bgGrad
+    ctx.fillStyle = '#0a0c0b'
     ctx.fillRect(0, 0, 800, 450)
 
-    // Border Glow
-    ctx.strokeStyle = '#b026ff'
-    ctx.lineWidth = 4
-    ctx.strokeRect(12, 12, 776, 426)
+    ctx.strokeStyle = isVictory ? '#d4ff3a' : '#ff4d2e'
+    ctx.lineWidth = 3
+    ctx.strokeRect(14, 14, 772, 422)
 
-    ctx.strokeStyle = '#06b6d4'
+    ctx.strokeStyle = 'rgba(237, 233, 224, 0.16)'
     ctx.lineWidth = 1
-    ctx.strokeRect(18, 18, 764, 414)
+    ctx.strokeRect(22, 22, 756, 406)
 
-    // Header Branding
     ctx.font = 'bold 28px monospace'
-    ctx.fillStyle = '#b026ff'
-    ctx.fillText('CELLIX v1.2', 40, 60)
+    ctx.fillStyle = '#d4ff3a'
+    ctx.fillText('CELLIX // 2.0', 40, 62)
 
     ctx.font = 'bold 14px monospace'
-    ctx.fillStyle = '#06b6d4'
-    ctx.fillText(`• ${gameMode.toUpperCase()} RUN SUMMARY`, 220, 58)
+    ctx.fillStyle = '#8b9088'
+    ctx.fillText(`${gameMode.toUpperCase()} RUN DOSSIER`, 280, 60)
 
-    // Status Banner
     ctx.font = 'bold 20px monospace'
-    ctx.fillStyle = isVictory ? '#10b981' : '#ef4444'
-    ctx.fillText(isVictory ? '★ ARENA PURGED / VICTORY ★' : '✖ ENTITY TERMINATED ✖', 40, 105)
+    ctx.fillStyle = isVictory ? '#d4ff3a' : '#ff4d2e'
+    ctx.fillText(isVictory ? '★ ARENA PURGED / VICTORY' : '✖ SPECIMEN TERMINATED', 40, 105)
 
-    // Score Callout
-    ctx.font = 'bold 44px monospace'
-    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 48px monospace'
+    ctx.fillStyle = '#ede9e0'
     ctx.fillText(score.toLocaleString(), 40, 165)
 
     ctx.font = '12px monospace'
-    ctx.fillStyle = '#94a3b8'
-    ctx.fillText('FINAL BIO-SCORE', 40, 185)
+    ctx.fillStyle = '#8b9088'
+    ctx.fillText('FINAL BIO-SCORE', 40, 186)
 
-    // Stats Grid
     const stats = [
-      { label: 'LEVEL REACHED', val: `LVL ${level}` },
+      { label: 'LEVEL REACHED', val: `LV.${level}` },
       { label: 'ENEMIES KILLED', val: `${kills}` },
       { label: 'SURVIVAL TIME', val: formatTime(survivalTime) },
       { label: 'DAMAGE DEALT', val: `${Math.round(damageDealt).toLocaleString()}` },
       { label: 'CRITICAL HITS', val: `${criticalHits}` },
-      { label: 'MUTATIONS & COMBOS', val: `${mutationsCount} (${combosCount} Synergies)` },
+      { label: 'MUTATIONS', val: `${mutationsCount} (${combosCount} SYN)` },
     ]
 
     stats.forEach((st, i) => {
       const col = i % 3
       const row = Math.floor(i / 3)
       const x = 40 + col * 240
-      const y = 240 + row * 70
+      const y = 235 + row * 72
 
-      ctx.fillStyle = '#1e1b4b'
-      ctx.fillRect(x, y, 220, 52)
-      ctx.strokeStyle = '#38bdf8'
+      ctx.fillStyle = '#111513'
+      ctx.fillRect(x, y, 224, 54)
+      ctx.strokeStyle = 'rgba(237, 233, 224, 0.2)'
       ctx.lineWidth = 1
-      ctx.strokeRect(x, y, 220, 52)
+      ctx.strokeRect(x, y, 224, 54)
 
       ctx.font = '10px monospace'
-      ctx.fillStyle = '#94a3b8'
+      ctx.fillStyle = '#8b9088'
       ctx.fillText(st.label, x + 12, y + 20)
 
-      ctx.font = 'bold 16px monospace'
-      ctx.fillStyle = '#38bdf8'
-      ctx.fillText(st.val, x + 12, y + 42)
+      ctx.font = 'bold 17px monospace'
+      ctx.fillStyle = '#d4ff3a'
+      ctx.fillText(st.val, x + 12, y + 43)
     })
 
-    // Footer
     ctx.font = '11px monospace'
-    ctx.fillStyle = '#64748b'
-    ctx.fillText('CELLIX OS • PLAY ONLINE: @iflxczz', 40, 410)
+    ctx.fillStyle = '#565b55'
+    ctx.fillText('CELLIX BIOLUMEN // @iflxczz', 40, 410)
 
-    // Download PNG
     const link = document.createElement('a')
     link.download = `cellix_run_${Date.now()}.png`
     link.href = canvas.toDataURL('image/png')
@@ -263,96 +287,104 @@ export default function GameOverModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md cursor-default">
+      <div className="fixed inset-0 z-50 flex cursor-default items-center justify-center bg-ink/90 p-4">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          initial={{ opacity: 0, scale: 0.94, y: 18 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          exit={{ opacity: 0, scale: 0.94, y: 18 }}
           transition={{ duration: 0.25, ease: 'easeOut' }}
-          className="glass-panel p-4 sm:p-8 rounded-3xl border-2 border-purple-500/50 bg-slate-950/95 max-w-md w-full text-center space-y-3 sm:space-y-5 shadow-[0_0_60px_rgba(176,38,255,0.4)] relative max-h-[92dvh] overflow-y-auto"
+          className={`v-panel ${isVictory ? 'v-accent-acid' : 'v-accent-ember'} relative max-h-[92dvh] w-full max-w-md space-y-4 overflow-y-auto p-6 text-center text-bone sm:p-8`}
         >
-          {/* Header Icon */}
-          <div className="flex justify-center">
-            <div className={`p-4 rounded-2xl border-2 ${
-              isVictory
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.3)]'
-                : 'bg-rose-500/20 text-rose-400 border-rose-500/40 shadow-[0_0_30px_rgba(244,63,94,0.3)]'
-            }`}>
-              <ShieldAlert className="h-8 w-8 animate-pulse" />
+          {/* Header */}
+          <div className="space-y-2 border-b border-line pb-4">
+            <div
+              className={`v-chamfer-sm mx-auto flex h-12 w-12 items-center justify-center border ${
+                isVictory
+                  ? 'border-acid/50 bg-ink text-acid'
+                  : 'border-ember/50 bg-ink text-ember'
+              }`}
+            >
+              <ShieldAlert className="h-6 w-6" />
             </div>
-          </div>
-
-          {/* Title */}
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-mono font-black tracking-tight text-white uppercase text-glow-purple">
+            <h2
+              className={`v-display text-4xl sm:text-5xl ${
+                isVictory ? 'text-acid' : 'text-ember'
+              }`}
+            >
               {isVictory ? (isUz ? 'ARENA TOZALANDI!' : 'ARENA PURGED!') : t('entityTerminated')}
             </h2>
-            <p className="text-xs font-mono text-slate-400 mt-1 uppercase tracking-widest">
+            <p className="v-label">
               {isVictory ? (isUz ? 'Muvaffaqiyatli g‘alaba' : 'Successful Extermination') : t('cellDestroyed')}
             </p>
           </div>
 
           {/* Core Score Display */}
-          <div className="p-4 rounded-2xl bg-purple-950/40 border border-purple-500/30 text-center space-y-1">
-            <span className="text-xs font-mono text-purple-300 font-bold uppercase tracking-wider">{t('finalScore')}</span>
-            <div className="text-3xl sm:text-4xl font-mono font-black text-white text-glow-purple">
-              {score.toLocaleString()}
+          <div className="border border-line bg-ink p-4">
+            <span className="v-label block">{t('finalScore')}</span>
+            <div className="v-display mt-1 text-5xl text-bone tabular-nums">
+              <CountUp to={score} />
             </div>
           </div>
 
           {coinsEarned > 0 && (
-            <div className="flex items-center justify-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 font-mono text-sm font-bold text-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.16)]">
-              <Coins className="h-5 w-5 text-amber-400" />
-              <span>+{coinsEarned} {t('coinUnit')}</span>
-              <span className="text-[10px] uppercase tracking-widest text-amber-400/70">{t('coinReward')}</span>
+            <div className="flex items-center justify-center gap-2 border border-gold/40 bg-gold/10 px-4 py-2.5 font-mono text-xs font-bold text-gold">
+              <Coins className="h-4 w-4" />
+              <span>
+                +{coinsEarned} {t('coinUnit')}
+              </span>
+              <span className="text-[10px] uppercase tracking-widest text-gold/75">
+                {t('coinReward')}
+              </span>
             </div>
           )}
 
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-2 gap-2 text-left font-mono p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
-            <div>
-              <span className="text-[10px] text-slate-400 block uppercase">{t('levelReached')}</span>
-              <span className="text-sm font-bold text-purple-300">Level {level}</span>
+          {/* Hairline Metrics Grid */}
+          <div className="grid grid-cols-2 border border-line bg-ink text-left font-mono">
+            <div className="border-b border-r border-line p-3">
+              <span className="v-label block">{t('levelReached')}</span>
+              <span className="mt-1 block text-sm font-bold text-acid">LV.{level}</span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 block uppercase">{t('enemiesDefeated')}</span>
-              <span className="text-sm font-bold text-rose-400">{kills} Kills</span>
+            <div className="border-b border-line p-3">
+              <span className="v-label block">{t('enemiesDefeated')}</span>
+              <span className="mt-1 block text-sm font-bold text-ember">{kills} KILLS</span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 block uppercase">{isUz ? 'Mutatsiyalar' : 'Mutations'}</span>
-              <span className="text-sm font-bold text-amber-300">{mutationsCount} ({combosCount} Synergies)</span>
+            <div className="border-b border-r border-line p-3">
+              <span className="v-label block">{isUz ? 'Mutatsiyalar' : 'Mutations'}</span>
+              <span className="mt-1 block text-sm font-bold text-gold">
+                {mutationsCount} ({combosCount} SYN)
+              </span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 block uppercase">{isUz ? 'Berilgan Zarar' : 'Damage Dealt'}</span>
-              <span className="text-sm font-bold text-cyan-300">{Math.round(damageDealt).toLocaleString()}</span>
+            <div className="border-b border-line p-3">
+              <span className="v-label block">{isUz ? 'Berilgan Zarar' : 'Damage Dealt'}</span>
+              <span className="mt-1 block text-sm font-bold text-tide">
+                {Math.round(damageDealt).toLocaleString()}
+              </span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 block uppercase">{isUz ? 'Kritik Zarbalar' : 'Critical Hits'}</span>
-              <span className="text-sm font-bold text-amber-300">{criticalHits}</span>
+            <div className="border-r border-line p-3">
+              <span className="v-label block">{isUz ? 'Kritik Zarbalar' : 'Critical Hits'}</span>
+              <span className="mt-1 block text-sm font-bold text-gold">{criticalHits}</span>
             </div>
 
-            <div>
-              <span className="text-[10px] text-slate-400 block uppercase">{t('survivalTime')}</span>
-              <span className="text-sm font-bold text-emerald-400">{formatTime(survivalTime)}</span>
+            <div className="p-3">
+              <span className="v-label block">{t('survivalTime')}</span>
+              <span className="mt-1 block text-sm font-bold text-bone">
+                {formatTime(survivalTime)}
+              </span>
             </div>
 
-            {/* Newly Unlocked Achievements Badge Banner */}
             {newAchievements.length > 0 && (
-              <div className="col-span-2 p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/50 text-left space-y-1 font-mono">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase">
+              <div className="col-span-2 space-y-1.5 border-t border-line bg-gold/10 p-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-gold">
                   <Award className="h-3.5 w-3.5" />
                   <span>{isUz ? 'Yangi Yutuq Ochildi!' : 'Achievement Unlocked!'}</span>
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {newAchievements.map((ach) => (
-                    <span
-                      key={ach.id}
-                      className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-amber-900/60 border border-amber-500/40 text-amber-200"
-                    >
+                    <span key={ach.id} className="v-tag v-accent-gold !py-0.5">
                       <span>{ach.badge}</span>
                       <span>{ach.title}</span>
                     </span>
@@ -362,70 +394,89 @@ export default function GameOverModal({
             )}
           </div>
 
-          {/* Automatic leaderboard save status */}
-          <div className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-center gap-2 ${
-            saveState === 'saved'
-              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-              : saveState === 'saving'
-                ? 'bg-cyan-950/60 border-cyan-500/40 text-cyan-300'
-                : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
-          }`}>
-            {saveState === 'saved' && <Check className="h-4 w-4 text-emerald-400" />}
-            <span>
-              {saveState === 'saved'
-                ? t('saved')
+          {/* Leaderboard Save Status */}
+          <div
+            className={`flex items-center justify-center gap-2 border px-3 py-2 font-mono text-xs ${
+              saveState === 'saved'
+                ? 'border-acid/40 bg-acid/10 text-acid'
                 : saveState === 'saving'
-                  ? t('saving')
-                  : (isUz ? 'Natija saqlanmadi' : 'Score not saved')}
-            </span>
+                  ? 'border-tide/40 bg-tide/10 text-tide'
+                  : 'border-ember/40 bg-ember/10 text-ember'
+            }`}
+          >
+            {saveState === 'saved' && <Check className="h-4 w-4" />}
+            {saveState === 'saving' ? (
+              <CellixLoader variant="compact" label={t('saving')} />
+            ) : (
+              <span>
+                {saveState === 'saved'
+                  ? t('saved')
+                  : isUz
+                    ? 'Natija saqlanmadi'
+                    : 'Score not saved'}
+              </span>
+            )}
           </div>
 
           {/* Action CTAs */}
-          <div className="flex flex-col gap-2 pt-1 font-mono">
-            {/* Export Card PNG */}
+          <div className="flex flex-col gap-2.5 pt-1">
             <button
+              type="button"
               onClick={handleExportCard}
-              className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-900 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/40 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+              className="v-btn-ghost w-full !py-2.5 !text-sm"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-3.5 w-3.5 text-tide" />
               <span>{downloadedCard ? t('shareSuccess') : t('exportCardBtn')}</span>
             </button>
 
             {gameMode === 'daily' ? (
-              <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-950/40 text-center space-y-1">
-                <p className="text-xs font-mono font-bold text-amber-300">
-                  {isUz ? "BUGUNGI KUNLIK SINOV YAKUNLANDI!" : "DAILY CHALLENGE COMPLETED!"}
+              <div className="space-y-1 border border-gold/40 bg-ink p-3 text-center">
+                <p className="font-mono text-xs font-bold text-gold">
+                  {isUz ? 'BUGUNGI KUNLIK SINOV YAKUNLANDI!' : 'DAILY CHALLENGE COMPLETED!'}
                 </p>
-                <p className="text-[11px] font-mono text-slate-400">
-                  {isUz ? "Kunlik sinov faqat 1 kunda 1 marta o'ynaladi. Keyingi sinov ertaga 00:00 da ochiladi." : "Daily challenge can only be played once per day. Next challenge opens tomorrow at 00:00."}
+                <p className="font-sans text-[11px] text-mute">
+                  {isUz
+                    ? "Kunlik sinov faqat 1 kunda 1 marta o'ynaladi. Keyingi sinov ertaga 00:00 da ochiladi."
+                    : 'Daily challenge can only be played once per day. Next challenge opens tomorrow at 00:00.'}
                 </p>
               </div>
             ) : (
-              <button
-                onClick={onRestart}
-                className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider btn-cyber-primary text-slate-950 flex items-center justify-center gap-2 cursor-pointer"
-              >
+              <button type="button" onClick={onRestart} className="v-btn w-full">
                 <RotateCcw className="h-4 w-4" />
                 <span>{t('playAgain')}</span>
               </button>
             )}
 
-            {/* Return to Arena Modes Screen */}
-            <a
-              href="/game"
-              className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-purple-950/40 border border-purple-500/40 text-purple-200 hover:bg-purple-900/60 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(176,38,255,0.2)]"
-            >
-              <Swords className="h-3.5 w-3.5 text-purple-400" />
-              <span>{t('returnToArena')}</span>
-            </a>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onReturnToHub) onReturnToHub()
+                  else router.push('/')
+                }}
+                className="v-btn-ghost w-full !px-2 !py-2.5 !text-xs"
+              >
+                <Home className="h-3.5 w-3.5 text-acid" />
+                <span>HUB</span>
+              </button>
 
-            <Link
-              href="/leaderboard"
-              className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider glass-panel border border-purple-500/40 text-purple-300 hover:bg-purple-950/40 transition-all flex items-center justify-center gap-2"
-            >
-              <Trophy className="h-3.5 w-3.5 text-amber-400" />
-              <span>{t('viewRankingsBtn')}</span>
-            </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onExitToModes) onExitToModes()
+                  else router.push('/game')
+                }}
+                className="v-btn-ghost w-full !px-2 !py-2.5 !text-xs"
+              >
+                <Swords className="h-3.5 w-3.5 text-tide" />
+                <span>{isUz ? 'REJIMLAR' : 'MODES'}</span>
+              </button>
+
+              <Link href="/leaderboard" className="v-btn-ghost w-full !px-2 !py-2.5 !text-xs">
+                <Trophy className="h-3.5 w-3.5 text-gold" />
+                <span>{isUz ? 'REYTING' : 'LADDER'}</span>
+              </Link>
+            </div>
           </div>
         </motion.div>
       </div>

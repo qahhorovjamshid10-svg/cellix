@@ -1,7 +1,9 @@
 // ============================================================
-// CELLIX v2.1 — Combat Visuals & Telegraphs
+// CELLIX 2.0 — Combat Visuals & Telegraphs
 // Floating text, hit flashes, attack telegraph lines & warning rings
 // ============================================================
+
+import { getGameSettings } from '../settings'
 
 export class CombatVisuals {
   private scene: Phaser.Scene
@@ -18,8 +20,12 @@ export class CombatVisuals {
     y: number,
     text: string,
     color: string = '#ffffff',
-    fontSize: number = 14
+    fontSize: number = 14,
+    isDamagePopup: boolean = true
   ) {
+    if (isDamagePopup && !getGameSettings().damageNumbers) {
+      return
+    }
     const txt = this.scene.add.text(x, y, text, {
       fontFamily: 'monospace',
       fontSize: `${fontSize}px`,

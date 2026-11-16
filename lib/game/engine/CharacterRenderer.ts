@@ -1,212 +1,367 @@
 // ============================================================
-// CELLIX v1.2 — 8-Bit Pixel People Character Generator
-// Creates authentic retro 8-bit pixel art humanoid character sprites
-// inspired by classic video game pixel people sprite sheets.
+// CELLIX v2026 — Volumetric 3D Procedural Texture & Arena Renderer
+// Generates high-contrast 3D-shaded sprites (radial key lighting,
+// Fresnel rim light, metallic bevels, specular crescents, weapons)
+// tailored to each skin's model3dType and arena theme.
 // ============================================================
 
 import * as Phaser from 'phaser'
-import { CELL_SKINS, type CellSkin } from '../cosmetics'
+import { CELL_SKINS, getArenaThemePalette, type CellSkin } from '../cosmetics'
+
+function toRgba(hexNum: number, alpha = 1): string {
+  const r = (hexNum >> 16) & 255
+  const g = (hexNum >> 8) & 255
+  const b = hexNum & 255
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function shadeColor(hexNum: number, factor: number): number {
+  const r = Math.min(255, Math.max(0, Math.round(((hexNum >> 16) & 255) * factor)))
+  const g = Math.min(255, Math.max(0, Math.round(((hexNum >> 8) & 255) * factor)))
+  const b = Math.min(255, Math.max(0, Math.round((hexNum & 255) * factor)))
+  return (r << 16) | (g << 8) | b
+}
+
+function addRoundedPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r)
+  } else {
+    ctx.rect(x, y, w, h)
+  }
+}
 
 export class CharacterRenderer {
-  /**
-   * Generates 8-bit pixel art character textures for all skins in a Phaser Scene.
-   */
-  public static generateAllCharacterTextures(scene: Phaser.Scene) {
+  public static generateAllCharacterTextures(scene: Phaser.Scene, arenaMode: string = 'classic') {
+    this.generateArenaTextures(scene, arenaMode)
     CELL_SKINS.forEach((skin) => {
-      this.generate8BitCharacterTexture(scene, skin)
+      this.generate3DCharacterTexture(scene, skin)
+      this.generate3DProjectileTexture(scene, skin)
     })
   }
 
   /**
-   * Generates an authentic 8-bit retro pixel character texture (48x48 px).
+   * Backward-compatible alias so MultiplayerScene & PracticeScene continue working.
    */
   public static generate8BitCharacterTexture(scene: Phaser.Scene, skin: CellSkin) {
+    return this.generate3DCharacterTexture(scene, skin)
+  }
+
+  /**
+   * Generates a 64x64 Volumetric 3D top-down Bio-Mech unit facing RIGHT (angle = 0).
+   */
+  public static generate3DCharacterTexture(scene: Phaser.Scene, skin: CellSkin): string {
     const key = `char_${skin.id}`
     if (scene.textures.exists(key)) return key
 
-    const gfx = scene.make.graphics({ x: 0, y: 0 })
-    const size = 48
-    const px = 3 // Each 8-bit pixel is 3x3 screen pixels (16x16 logical grid)
+    const size = 64
+    const cx = size / 2
+    const cy = size / 2
+    const canvasTex = scene.textures.createCanvas(key, size, size)
+    if (!canvasTex) return 'player_virus'
 
-    // Helper: Draw a single 8-bit pixel on the 16x16 grid
-    const drawPx = (gx: number, gy: number, color: number, alpha: number = 1) => {
-      gfx.fillStyle(color, alpha)
-      gfx.fillRect(gx * px, gy * px, px, px)
+    const ctx = canvasTex.getContext()
+    ctx.clearRect(0, 0, size, size)
+
+    const p = skin.primaryColor
+    const s = skin.secondaryColor
+    const a = skin.accentColor
+    const highlight = shadeColor(p, 1.35)
+
+    // 1. Contact drop shadow (simulates elevation above arena floor)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+    ctx.beginPath()
+    ctx.ellipse(cx - 2, cy + 4, 21, 18, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    // 2. Skin-specific 3D outer fins / pauldrons / orbital rings
+    if (skin.model3dType === 'bastion_mech' || skin.model3dType === 'plasma_core') {
+      // Heavy twin armored cannon shoulders
+      ctx.fillStyle = toRgba(s, 1)
+      ctx.strokeStyle = toRgba(p, 0.9)
+      ctx.lineWidth = 1.6
+      ctx.beginPath()
+      addRoundedPath(ctx, 14, 7, 22, 10, 3)
+      addRoundedPath(ctx, 14, 47, 22, 10, 3)
+      ctx.fill()
+      ctx.stroke()
+
+      // Cannon muzzles pointing right
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(34, 9, 10, 5)
+      ctx.fillRect(34, 50, 10, 5)
+      ctx.fillStyle = toRgba(a, 1)
+      ctx.fillRect(42, 10, 3, 3)
+      ctx.fillRect(42, 51, 3, 3)
+    } else if (skin.model3dType === 'leviathan_apex') {
+      // Predatory forward-curving 3D chitin mandibles
+      ctx.fillStyle = toRgba(s, 1)
+      ctx.strokeStyle = toRgba(p, 1)
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(28, 13)
+      ctx.lineTo(54, 19)
+      ctx.lineTo(42, 26)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+
+      ctx.beginPath()
+      ctx.moveTo(28, 51)
+      ctx.lineTo(54, 45)
+      ctx.lineTo(42, 38)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    } else if (skin.model3dType === 'void_orb' || skin.model3dType === 'chrono_octa') {
+      // Tilted 3D accretion / gimbal halo
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate(-0.4)
+      ctx.strokeStyle = toRgba(a, 0.78)
+      ctx.lineWidth = 2.4
+      ctx.beginPath()
+      ctx.ellipse(0, 0, 27, 13, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
     }
 
-    // Helper: Draw a horizontal row of 8-bit pixels
-    const drawHLine = (gx: number, gy: number, len: number, color: number, alpha: number = 1) => {
-      gfx.fillStyle(color, alpha)
-      gfx.fillRect(gx * px, gy * px, len * px, px)
+    // 3. Forward Blaster Barrel (facing +X so rotation aims cleanly)
+    const barrelGrad = ctx.createLinearGradient(cx + 8, cy - 6, cx + 29, cy + 6)
+    barrelGrad.addColorStop(0, '#334155')
+    barrelGrad.addColorStop(0.5, '#64748b')
+    barrelGrad.addColorStop(1, '#0f172a')
+    ctx.fillStyle = barrelGrad
+    ctx.strokeStyle = '#090c10'
+    ctx.lineWidth = 1.4
+    ctx.beginPath()
+    addRoundedPath(ctx, cx + 10, cy - 5, 19, 10, 2.5)
+    ctx.fill()
+    ctx.stroke()
+
+    // Glowing muzzle tip
+    ctx.fillStyle = toRgba(a, 1)
+    ctx.beginPath()
+    ctx.arc(cx + 28, cy, 3.2, 0, Math.PI * 2)
+    ctx.fill()
+
+    // 4. Volumetric 3D Main Hull (Sphere or Octahedron/Hex)
+    const bodyRadius = 18.5
+    const bodyGrad = ctx.createRadialGradient(cx - 6, cy - 7, 2, cx, cy, bodyRadius + 2)
+    bodyGrad.addColorStop(0, '#ffffff')
+    bodyGrad.addColorStop(0.24, toRgba(highlight, 1))
+    bodyGrad.addColorStop(0.65, toRgba(p, 1))
+    bodyGrad.addColorStop(1, toRgba(shadeColor(s, 0.45), 1))
+
+    ctx.fillStyle = bodyGrad
+    ctx.strokeStyle = toRgba(a, 0.85)
+    ctx.lineWidth = 1.8
+
+    if (skin.model3dType === 'chrono_octa' || skin.model3dType === 'bastion_mech') {
+      // Sculpted hexagonal 3D polyhedron
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const ang = (i * Math.PI) / 3
+        const vx = cx + Math.cos(ang) * bodyRadius
+        const vy = cy + Math.sin(ang) * bodyRadius
+        if (i === 0) ctx.moveTo(vx, vy)
+        else ctx.lineTo(vx, vy)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    } else {
+      ctx.beginPath()
+      ctx.arc(cx, cy, bodyRadius, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
     }
 
-    // Helper: Draw a filled rect on the pixel grid
-    const drawRect = (gx: number, gy: number, gw: number, gh: number, color: number, alpha: number = 1) => {
-      gfx.fillStyle(color, alpha)
-      gfx.fillRect(gx * px, gy * px, gw * px, gh * px)
+    // 5. Internal 3D Detail (Visor / Helix Core / Reactor / Crown)
+    if (skin.model3dType === 'helix_crystal') {
+      ctx.fillStyle = 'rgba(10, 12, 11, 0.55)'
+      ctx.beginPath()
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = toRgba(p, 1)
+      ctx.lineWidth = 2.2
+      ctx.beginPath()
+      ctx.moveTo(cx - 6, cy - 5)
+      ctx.bezierCurveTo(cx + 2, cy - 2, cx - 2, cy + 2, cx + 6, cy + 5)
+      ctx.stroke()
+      ctx.strokeStyle = toRgba(a, 1)
+      ctx.beginPath()
+      ctx.moveTo(cx - 6, cy + 5)
+      ctx.bezierCurveTo(cx + 2, cy + 2, cx - 2, cy - 2, cx + 6, cy - 5)
+      ctx.stroke()
+    } else if (skin.model3dType === 'crown_sovereign') {
+      // Top-down golden crown crest + glowing central jewel
+      ctx.fillStyle = toRgba(a, 0.95)
+      ctx.beginPath()
+      for (let i = 0; i < 5; i++) {
+        const ang = -Math.PI / 2 + (i * Math.PI * 2) / 5
+        const rx = cx + Math.cos(ang) * 11
+        const ry = cy + Math.sin(ang) * 11
+        if (i === 0) ctx.moveTo(rx, ry)
+        else ctx.lineTo(rx, ry)
+      }
+      ctx.closePath()
+      ctx.fill()
+    } else {
+      // Sleek forward-facing curved 3D visor arc
+      ctx.strokeStyle = '#07090b'
+      ctx.lineWidth = 6.5
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.arc(cx + 2, cy, 11, -0.85, 0.85)
+      ctx.stroke()
+
+      const visorGrad = ctx.createLinearGradient(cx + 6, cy - 9, cx + 14, cy + 9)
+      visorGrad.addColorStop(0, '#ffffff')
+      visorGrad.addColorStop(0.45, toRgba(a, 1))
+      visorGrad.addColorStop(1, toRgba(p, 1))
+      ctx.strokeStyle = visorGrad
+      ctx.lineWidth = 3.6
+      ctx.beginPath()
+      ctx.arc(cx + 2, cy, 11, -0.78, 0.78)
+      ctx.stroke()
     }
 
-    // Outer faint aura glow (subtle cyberpunk lighting behind 8-bit sprite)
-    gfx.fillStyle(skin.primaryColor, 0.2)
-    gfx.fillCircle(size / 2, size / 2, 22)
+    // 6. Specular 3D key-light crescent glint
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+    ctx.beginPath()
+    ctx.ellipse(cx - 6, cy - 7, 5.5, 2.8, -0.55, 0, Math.PI * 2)
+    ctx.fill()
 
-    // ==========================================
-    // 8-BIT RETRO PIXEL PERSON SPRITE (16x16 grid)
-    // Facing Direction: Top-down / slight 3/4 view facing Right/Down
-    // ==========================================
-
-    const P = skin.primaryColor
-    const S = skin.secondaryColor
-    const A = skin.accentColor
-    const OUTLINE = 0x090a0f // Dark 8-bit outline
-    const SKIN_TONE = 0xffdfba // Retro pixel flesh tone for visible face/hands
-    const DARK_SKIN = 0xd49b6a // Shading flesh
-
-    // --- 1. BLACK OUTLINE SILHOUETTE ---
-    // Head outline (gx: 4..11, gy: 2..8)
-    drawRect(5, 1, 6, 8, OUTLINE)
-    drawRect(4, 2, 8, 6, OUTLINE)
-
-    // Torso outline (gx: 4..11, gy: 8..13)
-    drawRect(3, 8, 10, 5, OUTLINE)
-
-    // Legs/Feet outline (gx: 4..6, 9..11, gy: 13..15)
-    drawRect(4, 13, 3, 3, OUTLINE)
-    drawRect(9, 13, 3, 3, OUTLINE)
-
-    // Weapon/Right Hand outline (gx: 11..15, gy: 7..10)
-    drawRect(11, 7, 5, 4, OUTLINE)
-
-    // --- 2. LEGS & SHOES / BOOTS (gy: 13..15) ---
-    // Pants / Greaves
-    drawRect(4, 12, 3, 2, S)
-    drawRect(9, 12, 3, 2, S)
-    // Boots
-    drawRect(4, 14, 3, 1, OUTLINE)
-    drawRect(9, 14, 3, 1, OUTLINE)
-    drawPx(4, 14, P) // Boot highlight
-    drawPx(9, 14, P)
-
-    // --- 3. TORSO / BODY CLOTHING & ARMOR (gy: 8..12) ---
-    // Base shirt / armor
-    drawRect(4, 8, 8, 4, S)
-    // Chestplate / Pattern
-    drawRect(5, 8, 6, 3, P)
-    // Chest emblem / tie / insignia
-    drawRect(7, 8, 2, 3, A)
-    // Belt with buckle
-    drawHLine(4, 11, 8, OUTLINE)
-    drawPx(7, 11, 0xffffff) // Belt buckle shine
-    drawPx(8, 11, A)
-
-    // --- 4. LEFT ARM & SHOULDER (gx: 3..4, gy: 8..11) ---
-    drawRect(3, 8, 2, 3, S)
-    drawPx(3, 10, P) // Shoulder pad
-    drawPx(3, 11, SKIN_TONE) // Left hand
-
-    // --- 5. RIGHT ARM & WEAPON / BLASTER (gx: 10..15, gy: 7..10) ---
-    // Right arm
-    drawRect(10, 8, 2, 3, S)
-    drawPx(11, 9, SKIN_TONE) // Right hand holding weapon
-
-    // 8-bit Pixel Blaster / Weapon
-    drawRect(12, 8, 3, 2, 0x334155) // Gun body
-    drawHLine(13, 8, 2, 0x64748b) // Gun barrel top highlight
-    drawPx(14, 8, P) // Muzzle glow
-    drawPx(15, 8, 0xffffff) // Muzzle tip / laser charge
-    drawPx(12, 9, A) // Power cell
-
-    // --- 6. HEAD, HELMET / HAIR, FACE & VISOR (gy: 2..7) ---
-    // Base Face / Skin
-    drawRect(5, 4, 6, 3, SKIN_TONE)
-    drawPx(5, 6, DARK_SKIN) // Chin shade
-    drawPx(10, 6, DARK_SKIN)
-
-    // Skin-Specific Themed Headwear & Details
-    switch (skin.id) {
-      case 'neon_cyan':
-        // Cyber Helmet with Neon Visor
-        drawRect(5, 2, 6, 2, S)
-        drawRect(4, 3, 2, 3, S) // Ear covers
-        drawRect(10, 3, 2, 3, S)
-        drawHLine(6, 4, 4, 0x0f172a) // Visor housing
-        drawHLine(6, 5, 4, P) // Glowing Cyan Visor
-        drawPx(7, 5, 0xffffff) // Glint
-        drawPx(7, 2, A) // Helmet crest
-        break
-
-      case 'toxic_bio':
-        // Hazard Gasmask & Emerald Hood
-        drawRect(5, 2, 6, 2, S)
-        drawRect(4, 3, 2, 3, S)
-        drawRect(10, 3, 2, 3, S)
-        // Dual glowing toxic eye lenses
-        drawPx(6, 4, P)
-        drawPx(9, 4, P)
-        drawPx(6, 4, 0xffffff, 0.7)
-        // Gas respirator filter
-        drawRect(7, 5, 2, 2, 0x1f2937)
-        drawPx(7, 6, A)
-        drawPx(8, 6, A)
-        break
-
-      case 'solar_flare':
-        // Fire Bandana / Flame Hair & Sunglasses
-        drawHLine(5, 2, 6, A) // Red bandana top
-        drawHLine(4, 3, 8, A)
-        drawPx(4, 2, P) // Flame tips
-        drawPx(9, 2, P)
-        // Pixel sunglasses
-        drawHLine(6, 4, 4, 0x020617)
-        drawPx(6, 4, P) // Sun reflection
-        drawPx(9, 4, P)
-        break
-
-      case 'void_purple':
-        // Mystic Void Hood & Glowing Eyes
-        drawRect(5, 2, 6, 2, S) // Deep purple hood
-        drawRect(4, 2, 2, 4, S)
-        drawRect(10, 2, 2, 4, S)
-        // Dark shadow face
-        drawRect(5, 4, 6, 3, 0x0f051d)
-        // Magenta glowing eyes
-        drawPx(6, 4, P)
-        drawPx(9, 4, P)
-        drawPx(6, 4, A, 0.8)
-        drawPx(9, 4, A, 0.8)
-        break
-
-      case 'glitch_matrix':
-        // Cyber Shinobi Mask & Glitch Visor
-        drawRect(5, 2, 6, 2, 0x020617)
-        drawHLine(4, 3, 8, P) // Neon pink headband
-        // Split Glitch Visor (Half cyan, half pink)
-        drawHLine(6, 4, 2, 0x06b6d4) // Cyan eye
-        drawHLine(8, 4, 2, P) // Pink eye
-        drawPx(6, 4, 0xffffff)
-        // Ninja mouth guard
-        drawHLine(6, 6, 4, 0x1e1b4b)
-        break
-
-      case 'golden_prestige':
-      default:
-        // Royal Golden Crown & Champion Hair
-        drawHLine(5, 2, 6, P) // Gold crown base
-        drawPx(5, 1, P) // Crown peak 1
-        drawPx(7, 1, 0xffffff) // Crown center gem (Diamond)
-        drawPx(8, 1, 0xffffff)
-        drawPx(10, 1, P) // Crown peak 3
-        // Golden eyes & heroic brow
-        drawPx(6, 4, 0x0f172a)
-        drawPx(7, 4, P)
-        drawPx(9, 4, 0x0f172a)
-        drawPx(8, 4, P)
-        break
-    }
-
-    gfx.generateTexture(key, size, size)
-    gfx.destroy()
-
+    canvasTex.refresh()
     return key
+  }
+
+  /**
+   * Generates skin-matched 3D glowing projectile orb texture (16x16).
+   */
+  public static generate3DProjectileTexture(scene: Phaser.Scene, skin: CellSkin): string {
+    const key = `proj_${skin.id}`
+    if (scene.textures.exists(key)) return key
+
+    const size = 16
+    const c = size / 2
+    const canvasTex = scene.textures.createCanvas(key, size, size)
+    if (!canvasTex) return 'spore_p'
+
+    const ctx = canvasTex.getContext()
+    const grad = ctx.createRadialGradient(c - 1.5, c - 1.5, 1, c, c, 7)
+    grad.addColorStop(0, '#ffffff')
+    grad.addColorStop(0.42, toRgba(skin.projectileColor, 1))
+    grad.addColorStop(0.85, toRgba(skin.primaryColor, 0.85))
+    grad.addColorStop(1, 'rgba(0,0,0,0)')
+
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(c, c, 7.5, 0, Math.PI * 2)
+    ctx.fill()
+
+    canvasTex.refresh()
+    return key
+  }
+
+  /**
+   * Generates Volumetric 3D shaded projectiles, enemies, bosses, and crystal XP gems.
+   */
+  public static generateArenaTextures(scene: Phaser.Scene, arenaMode: string = 'classic') {
+    const palette = getArenaThemePalette(arenaMode)
+
+    const createRadialSprite = (
+      key: string,
+      size: number,
+      coreColor: number,
+      rimColor: number,
+      strokeColor?: number,
+      spiky = false,
+      faceted = false
+    ) => {
+      if (scene.textures.exists(key)) return
+      const canvasTex = scene.textures.createCanvas(key, size, size)
+      if (!canvasTex) return
+      const ctx = canvasTex.getContext()
+      const c = size / 2
+      const r = c - 3
+
+      // Subtle ambient ground shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'
+      ctx.beginPath()
+      ctx.arc(c - 1, c + 2, r, 0, Math.PI * 2)
+      ctx.fill()
+
+      const grad = ctx.createRadialGradient(c - r * 0.35, c - r * 0.35, Math.max(1, r * 0.12), c, c, r)
+      grad.addColorStop(0, '#ffffff')
+      grad.addColorStop(0.32, toRgba(coreColor, 1))
+      grad.addColorStop(0.82, toRgba(rimColor, 1))
+      grad.addColorStop(1, toRgba(shadeColor(rimColor, 0.35), 1))
+
+      ctx.fillStyle = grad
+      ctx.strokeStyle = strokeColor ? toRgba(strokeColor, 0.95) : 'rgba(255,255,255,0.45)'
+      ctx.lineWidth = Math.max(1.5, size * 0.04)
+
+      if (spiky) {
+        const spikes = 8
+        ctx.beginPath()
+        for (let i = 0; i < spikes * 2; i++) {
+          const rad = i % 2 === 0 ? r : r * 0.72
+          const a = (i * Math.PI) / spikes
+          const x = c + Math.cos(a) * rad
+          const y = c + Math.sin(a) * rad
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      } else if (faceted) {
+        const sides = 6
+        ctx.beginPath()
+        for (let i = 0; i < sides; i++) {
+          const a = (i * Math.PI * 2) / sides
+          const x = c + Math.cos(a) * r
+          const y = c + Math.sin(a) * r
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      } else {
+        ctx.beginPath()
+        ctx.arc(c, c, r, 0, Math.PI * 2)
+        ctx.fill()
+        if (strokeColor) ctx.stroke()
+      }
+
+      // Specular crescent highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.beginPath()
+      ctx.ellipse(c - r * 0.32, c - r * 0.32, Math.max(1.5, r * 0.28), Math.max(1, r * 0.14), -0.6, 0, Math.PI * 2)
+      ctx.fill()
+
+      canvasTex.refresh()
+    }
+
+    // Default player fallback + projectiles
+    createRadialSprite('player_virus', 40, palette.accentHex, 0x0e7490, 0xffffff)
+    createRadialSprite('spore_p', 16, palette.accentHex, 0x06b6d4, 0xffffff)
+    createRadialSprite('spore_e', 16, 0xff4d2e, 0x991b1b, 0xffc83a)
+
+    // 3D Enemies
+    createRadialSprite('enemy_eater', 24, 0x4ade80, 0x15803d)
+    createRadialSprite('enemy_hunter', 32, 0xff4d2e, 0x881337, 0xffc83a, true)
+    createRadialSprite('enemy_shooter', 32, 0x3ae0c8, 0x0f766e, 0xe0f2fe)
+    createRadialSprite('enemy_tank', 52, 0xa3e635, 0x14532d, 0x365314, false, true)
+
+    // 3D Bosses (Classical Ancient Cell + Survival Mini Overlord + Survival Mega Overlord)
+    createRadialSprite('enemy_boss', 96, 0xc084fc, 0x4c1d95, 0xff4d2e, true)
+    createRadialSprite('enemy_boss_mini', 68, 0xf97316, 0x7c2d12, 0xffc83a, true)
+    createRadialSprite('enemy_boss_mega', 104, 0xec4899, 0x581c87, 0xff4d2e, true)
+
+    // Faceted 3D XP Bio-Crystal
+    createRadialSprite('xp_gem', 14, palette.accentHex, 0x0891b2, 0xffffff, false, true)
   }
 }

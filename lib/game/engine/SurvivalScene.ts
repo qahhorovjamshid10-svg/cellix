@@ -11,17 +11,33 @@ import {
   SPECIAL_VISUALS, DASH_VISUALS, SPAWN_BOUNDS,
   SHOOTER_RANGE, SHOOTER_COOLDOWN,
   XP_CONFIG,
-  HEAVY_SHOT, CHARGED_SHOT, BURST_FIRE, SPREAD_SHOT, SNIPER_SHOT, SHIELD_BUBBLE, GRENADE, PARRY, FIRE_MODES, FireMode
+  HEAVY_SHOT, CHARGED_SHOT, BURST_FIRE, SPREAD_SHOT, SNIPER_SHOT, SHIELD_BUBBLE, GRENADE, PARRY, FIRE_MODES, FireMode,
+  HOMING_MISSILES
 } from '../balance'
 import { computeLevelUps } from '../progression'
 import { HazardManager } from './HazardManager'
 import { CharacterRenderer } from './CharacterRenderer'
-import { getSelectedSkinId, getSkinConfig, type CellSkinId } from '../cosmetics'
+import { getSelectedSkinId, getSkinConfig, type CellSkin, type CellSkinId } from '../cosmetics'
 import { CombatVisuals } from './CombatVisuals'
 import { getRandomEliteModifier, applyEliteModifier } from '../elites'
 import type { EliteModifier } from '../types'
 import { getActiveCombos, type MutationCombo } from '../combos'
 import type { GameHUDData } from '../types'
+import { getGameSettings } from '../settings'
+import {
+  ArenaMutationState,
+  absorbWithShieldBarrier,
+  applyExpansionMutation,
+  buildArenaBackdrop,
+  createInitialMutationState,
+  destroyMutationVisuals,
+  getEnemyFrostMultiplier,
+  resetPooledProjectile,
+  safeCameraShake,
+  setCenteredCircleHitbox,
+  triggerChainLightningOnHit,
+  updateExpansionMutations,
+} from './ArenaCombatHelper'
 export type { GameHUDData }
 
 interface EnemyWeights {
@@ -32,6 +48,7 @@ interface EnemyWeights {
 }
 
 export interface SurvivalSceneConfig {
+  onReady?: () => void
   onLevelUp: (currentLevel: number) => void
   onGameOver: (metrics: {
     score: number
@@ -83,7 +100,19 @@ export default class SurvivalScene extends Phaser.Scene {
   private magnetRadius: number = 0
   private hasSplitClone: boolean = false
   private hasVoidCore: boolean = false
-  private isInvulnerable: boolean = false
+  private mutationState: ArenaMutationState = createInitialMutationState()
+  private activeSkin!: CellSkin
+  private activeCharTexture: string = 'player_virus'
+  private activeProjTexture: string = 'spore_p'
+  private playerAura: Phaser.GameObjects.Arc | null = null
+  private chargeRingGraphic: Phaser.GameObjects.Arc | null = null
+  private resizeHandler?: (gameSize: Phaser.Structs.Size) => void
+
+  private dashUntil: number = -Infinity
+  private shieldUntil: number = -Infinity
+  private parryUntil: number = -Infinity
+  private quantumInvulnUntil: number = -Infinity
+
   private lastPlayerDamageTime: number = -Infinity
   private readonly playerDamageCooldown: number = PLAYER.damageCooldown
   private gameEnded: boolean = false
@@ -172,8 +201,10 @@ export default class SurvivalScene extends Phaser.Scene {
     super({ key: 'SurvivalScene' })
   }
 
-  public init(data: { config: SurvivalSceneConfig }) {
-    this.configCallbacks = data.config
+  public init(data?: { config?: SurvivalSceneConfig }) {
+    if (data?.config) {
+      this.configCallbacks = data.config
+    }
     this.currentWave = 0
     this.enemiesRemainingInWave = 0
     this.waveActive = false
@@ -197,7 +228,16 @@ export default class SurvivalScene extends Phaser.Scene {
     this.magnetRadius = 0
     this.hasSplitClone = false
     this.hasVoidCore = false
-    this.isInvulnerable = false
+    this.mutationState = createInitialMutationState()
+    this.activeSkin = getSkinConfig(this.configCallbacks.initialSkin || getSelectedSkinId())
+    this.activeCharTexture = `char_${this.activeSkin.id}`
+    this.activeProjTexture = `proj_${this.activeSkin.id}`
+    this.playerAura = null
+    this.chargeRingGraphic = null
+    this.dashUntil = -Infinity
+    this.shieldUntil = -Infinity
+    this.parryUntil = -Infinity
+    this.quantumInvulnUntil = -Infinity
     this.lastPlayerDamageTime = -Infinity
     this.gameEnded = false
     this.lastMoveDirection.set(0, -1)
@@ -208,6 +248,17 @@ export default class SurvivalScene extends Phaser.Scene {
     this.isDashing = false
     this.lastSpecialTime = -this.specialCooldown
     this.lastVoidCoreTime = 0
+    this.lastHazardSpawnTime = 0
+    this.lastHeavyShotTime = 0
+    this.lastShieldTime = -999999
+    this.shieldActive = false
+    this.shieldGraphic = null
+    this.lastGrenadeTime = -999999
+    this.isParrying = false
+    this.lastParryTime = -999999
+    this.parryGraphic = null
+    this.isCharging = false
+    this.chargeStartTime = 0
     this.score = 0
     this.kills = 0
     this.survivalTime = 0
@@ -226,115 +277,28 @@ export default class SurvivalScene extends Phaser.Scene {
     this.lastBossShockwaveTime = 0
   }
 
-  preload() {
-    this.createProceduralTextures()
-    CharacterRenderer.generateAllCharacterTextures(this)
+  private isPlayerInvulnerable(now: number): boolean {
+    return (
+      now < this.dashUntil ||
+      now < this.shieldUntil ||
+      now < this.parryUntil ||
+      now < this.quantumInvulnUntil
+    )
   }
 
-  private createProceduralTextures() {
-    const gfx = this.make.graphics({ x: 0, y: 0 })
-
-    // 1. Player Virus Texture
-    gfx.clear()
-    gfx.fillStyle(0x00f0ff, 1)
-    gfx.fillCircle(16, 16, 14)
-    gfx.lineStyle(2, 0xffffff, 1)
-    gfx.strokeCircle(16, 16, 14)
-    gfx.fillStyle(0xffffff, 0.8)
-    gfx.fillCircle(12, 12, 4)
-    gfx.generateTexture('player_virus', 32, 32)
-
-    // 2. Player Spore Projectile
-    gfx.clear()
-    gfx.fillStyle(0x00ffff, 1)
-    gfx.fillCircle(6, 6, 5)
-    gfx.lineStyle(1.5, 0xffffff, 1)
-    gfx.strokeCircle(6, 6, 5)
-    gfx.generateTexture('spore_p', 12, 12)
-
-    // 3. Enemy Spore Projectile
-    gfx.clear()
-    gfx.fillStyle(0xff0055, 1)
-    gfx.fillCircle(6, 6, 5)
-    gfx.generateTexture('spore_e', 12, 12)
-
-    // 4. Enemy: Cell Eater
-    gfx.clear()
-    gfx.fillStyle(0x00ff66, 1)
-    gfx.fillCircle(10, 10, 8)
-    gfx.generateTexture('enemy_eater', 20, 20)
-
-    // 5. Enemy: Hunter
-    gfx.clear()
-    gfx.fillStyle(0xff0055, 1)
-    gfx.fillCircle(14, 14, 12)
-    gfx.lineStyle(2, 0xffb700, 1)
-    gfx.strokeCircle(14, 14, 12)
-    gfx.generateTexture('enemy_hunter', 28, 28)
-
-    // 6. Enemy: Tank
-    gfx.clear()
-    gfx.fillStyle(0xa3e635, 1)
-    gfx.fillCircle(24, 24, 20)
-    gfx.lineStyle(3, 0x15803d, 1)
-    gfx.strokeCircle(24, 24, 20)
-    gfx.generateTexture('enemy_tank', 48, 48)
-
-    // 7. Enemy: Shooter
-    gfx.clear()
-    gfx.fillStyle(0x38bdf8, 1)
-    gfx.fillCircle(14, 14, 11)
-    gfx.generateTexture('enemy_shooter', 28, 28)
-
-    // 8. Enemy: Boss Mini
-    gfx.clear()
-    gfx.fillStyle(0xb026ff, 1)
-    gfx.fillCircle(32, 32, 28)
-    gfx.lineStyle(3, 0xff0055, 1)
-    gfx.strokeCircle(32, 32, 28)
-    gfx.fillStyle(0xffffff, 0.9)
-    gfx.fillCircle(22, 22, 7)
-    gfx.generateTexture('enemy_boss_mini', 64, 64)
-
-    // 9. Enemy: Boss Mega
-    gfx.clear()
-    gfx.fillStyle(0x9333ea, 1)
-    gfx.fillCircle(48, 48, 44)
-    gfx.lineStyle(4, 0xec4899, 1)
-    gfx.strokeCircle(48, 48, 44)
-    gfx.fillStyle(0xffffff, 0.9)
-    gfx.fillCircle(32, 32, 10)
-    gfx.generateTexture('enemy_boss_mega', 96, 96)
-
-    // 10. XP Bio Gem
-    gfx.clear()
-    gfx.fillStyle(0x00f0ff, 1)
-    gfx.fillCircle(5, 5, 4)
-    gfx.generateTexture('xp_gem', 10, 10)
-
-    gfx.destroy()
+  preload() {
+    CharacterRenderer.generateAllCharacterTextures(this, 'survival')
   }
 
   create() {
     const worldSize = ARENA.width
     this.physics.world.setBounds(0, 0, worldSize, worldSize)
 
-    // Draw grid background and cell membrane border
-    this.add.grid(
-      worldSize / 2,
-      worldSize / 2,
-      worldSize,
-      worldSize,
-      ARENA.gridSize,
-      ARENA.gridSize,
-      0x060913,
-      1,
-      0x0d172a,
-      0.4
-    )
+    // Survival Red Reactor arena backdrop + player skin border harmony
+    buildArenaBackdrop(this, 'survival', this.activeSkin.primaryColor)
 
     // Groups
-    this.playerProjectiles = this.physics.add.group({ defaultKey: 'spore_p', maxSize: PLAYER_PROJECTILE.maxCount })
+    this.playerProjectiles = this.physics.add.group({ defaultKey: this.activeProjTexture, maxSize: PLAYER_PROJECTILE.maxCount })
     this.enemyProjectiles = this.physics.add.group({ defaultKey: 'spore_e', maxSize: ENEMY_PROJECTILE.maxCount })
     this.enemies = this.physics.add.group()
     this.xpGems = this.physics.add.group()
@@ -343,12 +307,17 @@ export default class SurvivalScene extends Phaser.Scene {
     this.hazardManager = new HazardManager(this)
     this.combatVisuals = new CombatVisuals(this)
 
-    // Player Hero Character Sprite
-    const activeSkin = getSkinConfig(this.configCallbacks.initialSkin || getSelectedSkinId())
-    const charTextureKey = `char_${activeSkin.id}`
-    this.player = this.physics.add.sprite(worldSize / 2, worldSize / 2, charTextureKey)
+    // Player 3D Hero Character Sprite + matched floor aura
+    this.playerAura = this.add.circle(worldSize / 2, worldSize / 2, 26, this.activeSkin.primaryColor, 0.16)
+    this.playerAura.setStrokeStyle(1.5, this.activeSkin.accentColor, 0.5).setDepth(1)
+
+    this.player = this.physics.add.sprite(worldSize / 2, worldSize / 2, this.activeCharTexture)
+    this.player.setDepth(5)
     this.player.setCollideWorldBounds(true)
-    this.player.setCircle(PLAYER.hitboxRadius, 10, 10)
+    setCenteredCircleHitbox(this.player, PLAYER.hitboxRadius)
+
+    this.chargeRingGraphic = this.add.circle(worldSize / 2, worldSize / 2, CHARGED_SHOT.chargeRingRadius, this.activeSkin.primaryColor, 0.18)
+    this.chargeRingGraphic.setStrokeStyle(2, this.activeSkin.accentColor, 0.85).setDepth(4).setVisible(false)
 
     // Camera
     this.cameras.main.setBounds(0, 0, worldSize, worldSize)
@@ -360,10 +329,15 @@ export default class SurvivalScene extends Phaser.Scene {
     this.cameras.main.setZoom(responsiveZoom)
 
     // Update zoom when device rotates or browser resizes
-    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
+    this.resizeHandler = (gameSize: Phaser.Structs.Size) => {
+      if (!this.cameras?.main) return
       const newZoom = Phaser.Math.Clamp(gameSize.width / baseW, 0.55, 1.1)
       this.cameras.main.setZoom(newZoom)
-    })
+    }
+    this.scale.on('resize', this.resizeHandler)
+
+    this.events.once('shutdown', () => this.cleanupScene())
+    this.events.once('destroy', () => this.cleanupScene())
 
     // Keyboard Controls
     if (this.input.keyboard) {
@@ -402,9 +376,9 @@ export default class SurvivalScene extends Phaser.Scene {
       this.cycleFireMode()
     })
 
-    // Charge shot: track pointer down time
+    // Charge shot: ignore touch events so mobile joysticks don't trigger ghost mouse charges
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.leftButtonDown()) {
+      if (pointer.leftButtonDown() && !pointer.wasTouch) {
         this.chargeStartTime = this.time.now
         this.isCharging = true
       }
@@ -419,6 +393,7 @@ export default class SurvivalScene extends Phaser.Scene {
         }
         this.isCharging = false
         this.chargeStartTime = 0
+        this.chargeRingGraphic?.setVisible(false)
       }
     })
 
@@ -467,11 +442,30 @@ export default class SurvivalScene extends Phaser.Scene {
 
     // Start first wave
     this.time.delayedCall(SURVIVAL_INITIAL_DELAY, () => {
-      this.startWave(1)
+      if (!this.gameEnded && this.player?.active) this.startWave(1)
     })
+
+    this.configCallbacks.onReady?.()
   }
 
-  update(time: number) {
+  private cleanupScene() {
+    if (this.resizeHandler) {
+      this.scale.off('resize', this.resizeHandler)
+      this.resizeHandler = undefined
+    }
+    this.shieldGraphic?.destroy()
+    this.shieldGraphic = null
+    this.parryGraphic?.destroy()
+    this.parryGraphic = null
+    this.playerAura?.destroy()
+    this.playerAura = null
+    this.chargeRingGraphic?.destroy()
+    this.chargeRingGraphic = null
+    destroyMutationVisuals(this.mutationState)
+    this.hazardManager?.clearAll()
+  }
+
+  update(time: number, delta: number = 16) {
     if (!this.player || !this.player.active || this.gameEnded) return
 
     let moveX = 0
@@ -487,6 +481,26 @@ export default class SurvivalScene extends Phaser.Scene {
       moveY = this.mobileMoveVector.y
     }
 
+    const activeSettings = getGameSettings()
+    if (
+      moveX === 0 &&
+      moveY === 0 &&
+      activeSettings.movementMode === 'mouse_follow' &&
+      this.input?.activePointer &&
+      !this.input.activePointer.wasTouch &&
+      this.cameras?.main
+    ) {
+      const ptr = this.input.activePointer
+      const wp = this.cameras.main.getWorldPoint(ptr.x, ptr.y)
+      const dx = wp.x - this.player.x
+      const dy = wp.y - this.player.y
+      const dist = Math.hypot(dx, dy)
+      if (dist > 28) {
+        moveX = dx / dist
+        moveY = dy / dist
+      }
+    }
+
     const movementVector = new Phaser.Math.Vector2(moveX, moveY)
     if (moveX !== 0 || moveY !== 0) {
       this.lastMoveDirection.copy(movementVector).normalize()
@@ -497,6 +511,10 @@ export default class SurvivalScene extends Phaser.Scene {
 
     if (!this.isDashing) {
       this.player.setVelocity(vec.x, vec.y)
+    }
+
+    if (this.playerAura) {
+      this.playerAura.setPosition(this.player.x, this.player.y)
     }
 
     // Hazard Manager Update
@@ -515,8 +533,9 @@ export default class SurvivalScene extends Phaser.Scene {
       this.triggerDash(time)
     }
 
+    // E key strictly triggers Special Pulse (no SHIFT collision)
     if (
-      (Phaser.Input.Keyboard.JustDown(this.wasd?.E) || Phaser.Input.Keyboard.JustDown(this.cursors.shift)) &&
+      Phaser.Input.Keyboard.JustDown(this.wasd?.E) &&
       time > this.lastSpecialTime + this.specialCooldown
     ) {
       let dirX = 0
@@ -550,33 +569,60 @@ export default class SurvivalScene extends Phaser.Scene {
       this.activateParry(time)
     }
 
-    // Update shield position
     if (this.shieldActive && this.shieldGraphic) {
       this.shieldGraphic.setPosition(this.player.x, this.player.y)
     }
+    if (this.isParrying && this.parryGraphic) {
+      this.parryGraphic.setPosition(this.player.x, this.player.y)
+    }
 
-    // Update charge ring visual
-    if (this.isCharging) {
-      const chargeTime = time - this.chargeStartTime
-      if (chargeTime > 400) {
-        const chargeLevel = Math.min(chargeTime / CHARGED_SHOT.maxChargeTime, 1)
-        // Draw charge ring effect
-        const chargeColor = chargeLevel >= 1 ? 0xff0000 : 0xfbbf24
-        const ring = this.add.circle(this.player.x, this.player.y, CHARGED_SHOT.chargeRingRadius * (1 + chargeLevel), chargeColor, 0.15 + chargeLevel * 0.2)
-        this.tweens.add({ targets: ring, alpha: 0, duration: 150, onComplete: () => ring.destroy() })
+    if (this.chargeRingGraphic) {
+      if (this.isCharging) {
+        const chargeTime = time - this.chargeStartTime
+        if (chargeTime > 400) {
+          const chargeLevel = Math.min(chargeTime / CHARGED_SHOT.maxChargeTime, 1)
+          this.chargeRingGraphic
+            .setVisible(true)
+            .setPosition(this.player.x, this.player.y)
+            .setRadius(CHARGED_SHOT.chargeRingRadius * (1 + chargeLevel))
+            .setFillStyle(chargeLevel >= 1 ? 0xff4d2e : 0xffc83a, 0.14 + chargeLevel * 0.2)
+            .setStrokeStyle(2, chargeLevel >= 1 ? 0xff4d2e : 0xffc83a, 0.9)
+        } else {
+          this.chargeRingGraphic.setVisible(false)
+        }
+      } else {
+        this.chargeRingGraphic.setVisible(false)
       }
     }
 
+    let shootDirX = 0
+    let shootDirY = 0
+    if (this.cursors) {
+      if (this.cursors.up.isDown) shootDirY -= 1
+      if (this.cursors.down.isDown) shootDirY += 1
+      if (this.cursors.left.isDown) shootDirX -= 1
+      if (this.cursors.right.isDown) shootDirX += 1
+    }
+    const isArrowAiming = shootDirX !== 0 || shootDirY !== 0
+
     // Character Visor & Weapon Aim Rotation
     const pointer = this.input.activePointer
-    if (pointer && this.cameras?.main) {
+    if (this.mobileAttackTarget.isAttacking) {
+      const closestEnemy = this.getClosestActiveEnemy()
+      const tx = closestEnemy ? closestEnemy.x : this.player.x + this.mobileAttackTarget.x
+      const ty = closestEnemy ? closestEnemy.y : this.player.y + this.mobileAttackTarget.y
+      this.player.setRotation(Phaser.Math.Angle.Between(this.player.x, this.player.y, tx, ty))
+    } else if (isArrowAiming) {
+      this.player.setRotation(Math.atan2(shootDirY, shootDirX))
+    } else if (pointer && !pointer.wasTouch && this.cameras?.main) {
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
       const aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, worldPoint.x, worldPoint.y)
       this.player.setRotation(aimAngle)
     }
 
-    if (pointer.isDown || this.mobileAttackTarget.isAttacking) {
-      // Don't auto-fire while charging (charge > 400ms)
+    const mouseFiring = Boolean(pointer?.isDown && !pointer.wasTouch)
+    const settingsAutoFire = activeSettings.defaultFireMode === 'auto'
+    if (mouseFiring || settingsAutoFire || this.mobileAttackTarget.isAttacking) {
       const isChargingLong = this.isCharging && (time - this.chargeStartTime > 400)
       if (!isChargingLong && time > this.lastShootTime + this.getFireModeCooldown()) {
         let targetX = pointer.worldX
@@ -591,9 +637,20 @@ export default class SurvivalScene extends Phaser.Scene {
             targetX = this.player.x + this.mobileAttackTarget.x
             targetY = this.player.y + this.mobileAttackTarget.y
           }
-          // Rotate player toward aim target
-          const aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
-          this.player.setRotation(aimAngle)
+        } else if (settingsAutoFire && !mouseFiring) {
+          const closestEnemy = this.getClosestActiveEnemy()
+          if (closestEnemy) {
+            targetX = closestEnemy.x
+            targetY = closestEnemy.y
+          } else if (this.cameras?.main && pointer) {
+            const worldPt = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
+            targetX = worldPt.x
+            targetY = worldPt.y
+          }
+        } else if (this.cameras?.main) {
+          const worldPt = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
+          targetX = worldPt.x
+          targetY = worldPt.y
         }
 
         this.fireByMode(targetX, targetY)
@@ -601,21 +658,11 @@ export default class SurvivalScene extends Phaser.Scene {
       }
     }
 
-    if (this.cursors) {
-      let shootDirX = 0
-      let shootDirY = 0
-
-      if (this.cursors.up.isDown) shootDirY -= 1
-      if (this.cursors.down.isDown) shootDirY += 1
-      if (this.cursors.left.isDown) shootDirX -= 1
-      if (this.cursors.right.isDown) shootDirX += 1
-
-      if (shootDirX !== 0 || shootDirY !== 0) {
-        const isChargingLong = this.isCharging && (time - this.chargeStartTime > 400)
-        if (!isChargingLong && time > this.lastShootTime + this.getFireModeCooldown()) {
-          this.fireByMode(this.player.x + shootDirX * 100, this.player.y + shootDirY * 100)
-          this.lastShootTime = time
-        }
+    if (isArrowAiming) {
+      const isChargingLong = this.isCharging && (time - this.chargeStartTime > 400)
+      if (!isChargingLong && time > this.lastShootTime + this.getFireModeCooldown()) {
+        this.fireByMode(this.player.x + shootDirX * 150, this.player.y + shootDirY * 150)
+        this.lastShootTime = time
       }
     }
 
@@ -633,6 +680,18 @@ export default class SurvivalScene extends Phaser.Scene {
       })
     }
 
+    updateExpansionMutations({
+      scene: this,
+      state: this.mutationState,
+      time,
+      deltaMs: delta,
+      player: this.player,
+      enemies: this.enemies,
+      projectiles: this.playerProjectiles,
+      activeCombos: this.activeCombos,
+      damageEnemy: (enemy, amount, fromClone) => this.damageEnemy(enemy, amount, fromClone),
+    })
+
     if (this.hasVoidCore && time > this.lastVoidCoreTime + VOID_CORE.triggerInterval) {
       this.triggerVoidCoreBlackHole()
       this.lastVoidCoreTime = time
@@ -649,7 +708,7 @@ export default class SurvivalScene extends Phaser.Scene {
       if (time > this.cloneLastShootTime + cloneFireInterval && this.enemies.getLength() > 0) {
         const closestEnemy = this.physics.closest(this.cloneSprite, this.enemies.getChildren().filter(e => e.active)) as Phaser.Physics.Arcade.Sprite
         if (closestEnemy) {
-          this.firePlayerSpore(closestEnemy.x, closestEnemy.y, this.cloneSprite.x, this.cloneSprite.y)
+          this.firePlayerSpore(closestEnemy.x, closestEnemy.y, this.cloneSprite.x, this.cloneSprite.y, true)
           this.cloneLastShootTime = time
         }
       }
@@ -665,7 +724,7 @@ export default class SurvivalScene extends Phaser.Scene {
       if (nextBossPhase > this.bossPhase) {
         this.bossPhase = nextBossPhase
         soundManager.playBossSpawn()
-        this.cameras.main.shake(250, 0.012)
+        safeCameraShake(this, 250, 0.012)
         if (this.bossPhase === 2 && !this.bossMinionsSpawned && !this.bossIsMini) {
           this.spawnBossMinions()
         }
@@ -691,7 +750,7 @@ export default class SurvivalScene extends Phaser.Scene {
 
       if (enemy !== this.boss) {
         const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y)
-        const speed = enemy.getData('speed') || 100
+        const speed = (enemy.getData('speed') || 100) * getEnemyFrostMultiplier(enemy, this.mutationState.frostStacks, time)
         const enemyType = enemy.getData('enemyType')
 
         if (enemyType === 'enemy_shooter') {
@@ -723,6 +782,14 @@ export default class SurvivalScene extends Phaser.Scene {
       }
     })
 
+    this.enemyProjectiles.getChildren().forEach((p) => {
+      const sprite = p as Phaser.Physics.Arcade.Sprite
+      if (sprite.active && sprite.getData('expiresAt') && this.time.now >= sprite.getData('expiresAt')) {
+        sprite.setActive(false).setVisible(false)
+        sprite.body?.stop()
+      }
+    })
+
     this.updateToxinClouds()
 
     const now = this.time.now
@@ -735,14 +802,14 @@ export default class SurvivalScene extends Phaser.Scene {
       xp: this.playerXp,
       nextLevelXp: this.nextLevelXp,
       level: this.playerLevel,
-      score: this.score,
+      score: Math.round(this.score),
       kills: this.kills,
       survivalTime: this.survivalTime,
       dashCooldownPct: dashCdPct,
       specialCooldownPct: specCdPct,
       bossActive: Boolean(this.boss && this.boss.active),
       bossHpPct: this.boss && this.boss.active ? Math.max(0, this.bossHp / this.bossMaxHp) : 0,
-      bossName: 'THE ANCIENT CELL',
+      bossName: this.bossIsMini ? 'WAVE 5 MINI-OVERLORD' : 'WAVE 10 OMEGA OVERLORD',
       fireMode: this.fireMode,
       isCharging: this.isCharging,
       chargeLevel: this.isCharging ? Math.min((this.time.now - this.chargeStartTime) / CHARGED_SHOT.maxChargeTime, 1) : 0,
@@ -762,22 +829,37 @@ export default class SurvivalScene extends Phaser.Scene {
     }
   }
 
-  public firePlayerSpore(targetX: number, targetY: number, originX?: number, originY?: number) {
+  private configureSporeModifiers(spore: Phaser.Physics.Arcade.Sprite, fromClone = false) {
+    const now = this.time.now
+    spore.setData('fromClone', fromClone)
+    spore.setData('firedAt', now)
+    if (this.mutationState.boomerangStacks > 0 && !fromClone) {
+      spore.setData('boomerang', true)
+      spore.setData('boomerangReturned', false)
+      spore.setData('hitSet', new Set())
+      spore.setData('piercing', true)
+    }
+    if (this.mutationState.hasHomingMissiles) {
+      spore.setData('homing', true)
+    }
+  }
+
+  public firePlayerSpore(targetX: number, targetY: number, originX?: number, originY?: number, fromClone = false) {
     const startX = originX ?? this.player.x
     const startY = originY ?? this.player.y
 
-    const spore = this.playerProjectiles.get(startX, startY, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    const spore = this.playerProjectiles.get(startX, startY, this.activeProjTexture) as Phaser.Physics.Arcade.Sprite
     if (!spore) return
 
-    spore.setActive(true).setVisible(true)
-    spore.setCircle(PLAYER_PROJECTILE.hitboxRadius)
+    resetPooledProjectile(spore, this.activeProjTexture, PLAYER_PROJECTILE.hitboxRadius)
+    this.configureSporeModifiers(spore, fromClone)
 
     const angle = Phaser.Math.Angle.Between(startX, startY, targetX, targetY)
-    const projectileSpeed = PLAYER_PROJECTILE.speed
+    const speedBoost = this.mutationState.hasHomingMissiles ? HOMING_MISSILES.speedBoost : 1
+    const projectileSpeed = PLAYER_PROJECTILE.speed * speedBoost
     spore.setVelocity(Math.cos(angle) * projectileSpeed, Math.sin(angle) * projectileSpeed)
 
     soundManager.playShoot()
-
     spore.setData('expiresAt', this.time.now + PLAYER_PROJECTILE.lifetime)
   }
 
@@ -801,7 +883,8 @@ export default class SurvivalScene extends Phaser.Scene {
   public triggerDash(time: number) {
     this.lastDashTime = time
     this.isDashing = true
-    this.isInvulnerable = true
+    const duration = this.hasPhaseDash ? PLAYER.phaseDashDuration : PLAYER.dashDuration
+    this.dashUntil = Math.max(this.dashUntil, time + duration)
     const dashSpeed = this.playerSpeed * (this.hasPhaseDash ? PLAYER.phaseDashSpeedMult : PLAYER.dashSpeedMult)
     this.player.setVelocity(this.lastMoveDirection.x * dashSpeed, this.lastMoveDirection.y * dashSpeed)
     soundManager.playDash()
@@ -810,8 +893,9 @@ export default class SurvivalScene extends Phaser.Scene {
       delay: DASH_VISUALS.ghostDelay,
       repeat: DASH_VISUALS.ghostRepeat,
       callback: () => {
-        const ghost = this.add.sprite(this.player.x, this.player.y, 'player_virus')
-        ghost.setAlpha(0.5).setTint(0x00f0ff)
+        if (this.gameEnded || !this.player?.active) return
+        const ghost = this.add.sprite(this.player.x, this.player.y, this.activeCharTexture)
+        ghost.setRotation(this.player.rotation).setAlpha(0.45).setTint(this.activeSkin.primaryColor)
         this.tweens.add({
           targets: ghost,
           alpha: 0,
@@ -821,18 +905,18 @@ export default class SurvivalScene extends Phaser.Scene {
       },
     })
 
-    const duration = this.hasPhaseDash ? PLAYER.phaseDashDuration : PLAYER.dashDuration
     this.time.delayedCall(duration, () => {
       this.isDashing = false
-      this.isInvulnerable = false
-      this.player.setVelocity(0, 0)
+      if (this.player?.active && !this.gameEnded) {
+        this.player.setVelocity(0, 0)
+      }
     })
   }
 
   public triggerSpecialPulse(time: number, dirX = 0, dirY = 0) {
     this.lastSpecialTime = time
     soundManager.playExplosion()
-    this.cameras.main.shake(SPECIAL_VISUALS.shakeDuration, SPECIAL_VISUALS.shakeIntensity)
+    safeCameraShake(this, SPECIAL_VISUALS.shakeDuration, SPECIAL_VISUALS.shakeIntensity)
 
     // Directional Beam (O'ng, Chap, Tepa, Past) or 4-Way Cross Blast (+)
     const directions: { dx: number; dy: number }[] = []
@@ -930,10 +1014,10 @@ export default class SurvivalScene extends Phaser.Scene {
   }
 
   private fireHeavyShot(targetX: number, targetY: number) {
-    const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    const spore = this.playerProjectiles.get(this.player.x, this.player.y, this.activeProjTexture) as Phaser.Physics.Arcade.Sprite
     if (!spore) return
-    spore.setActive(true).setVisible(true)
-    spore.setCircle(HEAVY_SHOT.hitboxRadius)
+    resetPooledProjectile(spore, this.activeProjTexture, HEAVY_SHOT.hitboxRadius)
+    this.configureSporeModifiers(spore)
     spore.setScale(1.8)
     spore.setTint(0xff6600)
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
@@ -941,31 +1025,35 @@ export default class SurvivalScene extends Phaser.Scene {
     spore.setData('damageMult', HEAVY_SHOT.damageMult)
     spore.setData('expiresAt', this.time.now + HEAVY_SHOT.lifetime)
     soundManager.playExplosion()
-    this.cameras.main.shake(50, 0.003)
+    safeCameraShake(this, 50, 0.003)
   }
 
   private fireChargedShot(targetX: number, targetY: number, chargeLevel: number) {
     const dmgMult = 1 + (CHARGED_SHOT.maxDamageMult - 1) * chargeLevel
     const spdMult = 1 + (CHARGED_SHOT.maxSpeedMult - 1) * chargeLevel
-    const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    const spore = this.playerProjectiles.get(this.player.x, this.player.y, this.activeProjTexture) as Phaser.Physics.Arcade.Sprite
     if (!spore) return
-    spore.setActive(true).setVisible(true)
-    spore.setCircle(PLAYER_PROJECTILE.hitboxRadius * (1 + chargeLevel))
+    resetPooledProjectile(spore, this.activeProjTexture, PLAYER_PROJECTILE.hitboxRadius * (1 + chargeLevel))
+    this.configureSporeModifiers(spore)
     spore.setScale(1 + chargeLevel * 1.2)
-    spore.setTint(chargeLevel >= 1 ? 0xff0000 : 0xffaa00)
+    spore.setTint(chargeLevel >= 1 ? 0xff4d2e : 0xffaa00)
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
     const speed = PLAYER_PROJECTILE.speed * spdMult
     spore.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed)
     spore.setData('damageMult', dmgMult)
-    spore.setData('piercing', chargeLevel >= 1 && CHARGED_SHOT.pierceAtMax)
+    if (chargeLevel >= 1 && CHARGED_SHOT.pierceAtMax) {
+      spore.setData('piercing', true)
+      spore.setData('hitSet', new Set())
+    }
     spore.setData('expiresAt', this.time.now + PLAYER_PROJECTILE.lifetime * 1.5)
     soundManager.playExplosion()
-    this.cameras.main.shake(80 * chargeLevel, 0.004 * chargeLevel)
+    safeCameraShake(this, 80 * chargeLevel, 0.004 * chargeLevel)
   }
 
   private fireBurst(targetX: number, targetY: number) {
     for (let i = 0; i < BURST_FIRE.count; i++) {
       this.time.delayedCall(i * BURST_FIRE.delay, () => {
+        if (this.gameEnded || !this.player?.active) return
         this.firePlayerSpore(targetX, targetY)
       })
     }
@@ -977,10 +1065,10 @@ export default class SurvivalScene extends Phaser.Scene {
     for (let i = 0; i < SPREAD_SHOT.count; i++) {
       const angleOffset = -halfSpread + (2 * halfSpread * i) / (SPREAD_SHOT.count - 1)
       const angle = baseAngle + angleOffset
-      const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+      const spore = this.playerProjectiles.get(this.player.x, this.player.y, this.activeProjTexture) as Phaser.Physics.Arcade.Sprite
       if (!spore) continue
-      spore.setActive(true).setVisible(true)
-      spore.setCircle(PLAYER_PROJECTILE.hitboxRadius)
+      resetPooledProjectile(spore, this.activeProjTexture, PLAYER_PROJECTILE.hitboxRadius)
+      this.configureSporeModifiers(spore)
       spore.setVelocity(Math.cos(angle) * PLAYER_PROJECTILE.speed, Math.sin(angle) * PLAYER_PROJECTILE.speed)
       spore.setData('damageMult', SPREAD_SHOT.damageMult)
       spore.setData('expiresAt', this.time.now + PLAYER_PROJECTILE.lifetime)
@@ -989,12 +1077,12 @@ export default class SurvivalScene extends Phaser.Scene {
   }
 
   private fireSniperShot(targetX: number, targetY: number) {
-    const spore = this.playerProjectiles.get(this.player.x, this.player.y, 'spore_p') as Phaser.Physics.Arcade.Sprite
+    const spore = this.playerProjectiles.get(this.player.x, this.player.y, this.activeProjTexture) as Phaser.Physics.Arcade.Sprite
     if (!spore) return
-    spore.setActive(true).setVisible(true)
-    spore.setCircle(SNIPER_SHOT.hitboxRadius)
-    spore.setScale(0.7)
-    spore.setTint(0x3b82f6)
+    resetPooledProjectile(spore, this.activeProjTexture, SNIPER_SHOT.hitboxRadius)
+    this.configureSporeModifiers(spore)
+    spore.setScale(0.75)
+    spore.setTint(0x38bdf8)
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
     spore.setVelocity(Math.cos(angle) * SNIPER_SHOT.speed, Math.sin(angle) * SNIPER_SHOT.speed)
     spore.setData('damageMult', SNIPER_SHOT.damageMult)
@@ -1005,13 +1093,13 @@ export default class SurvivalScene extends Phaser.Scene {
   private activateShield(time: number) {
     this.lastShieldTime = time
     this.shieldActive = true
-    this.isInvulnerable = true
+    this.shieldUntil = Math.max(this.shieldUntil, time + SHIELD_BUBBLE.duration)
     soundManager.playDash()
+    this.shieldGraphic?.destroy()
     this.shieldGraphic = this.add.circle(this.player.x, this.player.y, SHIELD_BUBBLE.radius, SHIELD_BUBBLE.color, 0.25)
-    this.shieldGraphic.setStrokeStyle(2, SHIELD_BUBBLE.color, 0.8)
+    this.shieldGraphic.setStrokeStyle(2, SHIELD_BUBBLE.color, 0.85)
     this.time.delayedCall(SHIELD_BUBBLE.duration, () => {
       this.shieldActive = false
-      if (!this.isDashing) this.isInvulnerable = false
       if (this.shieldGraphic) {
         this.shieldGraphic.destroy()
         this.shieldGraphic = null
@@ -1025,8 +1113,8 @@ export default class SurvivalScene extends Phaser.Scene {
     soundManager.playShoot()
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY)
     const dist = Math.min(Phaser.Math.Distance.Between(this.player.x, this.player.y, targetX, targetY), 400)
-    const endX = this.player.x + Math.cos(angle) * dist
-    const endY = this.player.y + Math.sin(angle) * dist
+    const endX = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * dist, 40, ARENA.width - 40)
+    const endY = Phaser.Math.Clamp(this.player.y + Math.sin(angle) * dist, 40, ARENA.height - 40)
 
     this.tweens.add({
       targets: grenade,
@@ -1035,8 +1123,9 @@ export default class SurvivalScene extends Phaser.Scene {
       duration: GRENADE.fuseTime,
       onComplete: () => {
         grenade.destroy()
+        if (this.gameEnded || !this.scene.isActive()) return
         soundManager.playExplosion()
-        this.cameras.main.shake(120, 0.008)
+        safeCameraShake(this, 120, 0.008)
         const blast = this.add.circle(endX, endY, 10, GRENADE.color, 0.6)
         this.tweens.add({
           targets: blast,
@@ -1053,18 +1142,19 @@ export default class SurvivalScene extends Phaser.Scene {
             this.damageEnemy(enemy, GRENADE.damage)
           }
         })
-      }
+      },
     })
   }
 
   private activateParry(time: number) {
     this.lastParryTime = time
     this.isParrying = true
+    this.parryUntil = Math.max(this.parryUntil, time + PARRY.activeWindow)
     soundManager.playHover()
-    this.parryGraphic = this.add.circle(this.player.x, this.player.y, 30, PARRY.color, 0.3)
-    this.parryGraphic.setStrokeStyle(3, PARRY.color, 0.9)
+    this.parryGraphic?.destroy()
+    this.parryGraphic = this.add.circle(this.player.x, this.player.y, 34, PARRY.color, 0.28)
+    this.parryGraphic.setStrokeStyle(3, PARRY.color, 0.95).setDepth(6)
 
-    // During parry window, reflect nearby enemy projectiles
     this.time.delayedCall(PARRY.activeWindow, () => {
       this.isParrying = false
       if (this.parryGraphic) {
@@ -1077,10 +1167,7 @@ export default class SurvivalScene extends Phaser.Scene {
   public triggerVoidCoreBlackHole() {
     soundManager.playBossSpawn()
     if (this.hasActiveCombo('quantum_core')) {
-      this.isInvulnerable = true
-      this.time.delayedCall(700, () => {
-        if (!this.isDashing) this.isInvulnerable = false
-      })
+      this.quantumInvulnUntil = Math.max(this.quantumInvulnUntil, this.time.now + 700)
     }
     const voidX = this.player.x + Phaser.Math.Between(-VOID_CORE.spawnOffset, VOID_CORE.spawnOffset)
     const voidY = this.player.y + Phaser.Math.Between(-VOID_CORE.spawnOffset, VOID_CORE.spawnOffset)
@@ -1183,7 +1270,8 @@ export default class SurvivalScene extends Phaser.Scene {
     }
 
     const enemy = this.enemies.create(spawnX, spawnY, key) as Phaser.Physics.Arcade.Sprite
-    enemy.setActive(true).setVisible(true)
+    enemy.setActive(true).setVisible(true).setDepth(3).setCollideWorldBounds(true)
+    setCenteredCircleHitbox(enemy, key === ENEMIES.tank.textureKey ? 20 : key === ENEMIES.eater.textureKey ? 9 : 12)
     enemy.setData('hp', hp)
     enemy.setData('maxHp', hp)
     enemy.setData('speed', speed)
@@ -1199,10 +1287,12 @@ export default class SurvivalScene extends Phaser.Scene {
 
   private spawnBossAncientCell(isMini: boolean = false) {
     soundManager.playBossSpawn()
-    this.cameras.main.shake(400, 0.015)
+    safeCameraShake(this, 400, 0.015)
 
-    const spawnX = this.player.x + 400
-    const spawnY = this.player.y + 400
+    const offsetX = this.player.x > ARENA.width / 2 ? -380 : 380
+    const offsetY = this.player.y > ARENA.height / 2 ? -380 : 380
+    const spawnX = Phaser.Math.Clamp(this.player.x + offsetX, SPAWN_BOUNDS.min, SPAWN_BOUNDS.max)
+    const spawnY = Phaser.Math.Clamp(this.player.y + offsetY, SPAWN_BOUNDS.min, SPAWN_BOUNDS.max)
 
     const bossConfig = isMini ? BOSS_MINI : BOSS_MEGA
     this.bossMaxHp = bossConfig.baseHp + this.playerLevel * bossConfig.hpPerLevel
@@ -1212,11 +1302,11 @@ export default class SurvivalScene extends Phaser.Scene {
     this.bossMinionsSpawned = false
     this.lastBossShockwaveTime = 0
 
-    this.boss = this.enemies.create(spawnX, spawnY, 'enemy_boss') as Phaser.Physics.Arcade.Sprite
-    this.boss.setActive(true).setVisible(true)
-    this.boss.setScale(bossConfig.spriteScale)
-    this.boss.setCircle(bossConfig.hitboxRadius)
-    
+    const bossKey = isMini ? 'enemy_boss_mini' : 'enemy_boss_mega'
+    this.boss = this.enemies.create(spawnX, spawnY, bossKey) as Phaser.Physics.Arcade.Sprite
+    this.boss.setActive(true).setVisible(true).setDepth(4).setCollideWorldBounds(true)
+    setCenteredCircleHitbox(this.boss, bossConfig.hitboxRadius)
+
     this.boss.setData('hp', this.bossHp)
     this.boss.setData('maxHp', this.bossMaxHp)
     this.boss.setData('speed', bossConfig.speed)
@@ -1235,9 +1325,10 @@ export default class SurvivalScene extends Phaser.Scene {
       const angle = (i * Math.PI * 2) / projectileCount
       const spore = this.enemyProjectiles.get(this.boss.x, this.boss.y, 'spore_e') as Phaser.Physics.Arcade.Sprite
       if (spore) {
-        spore.setActive(true).setVisible(true)
+        spore.setActive(true).setVisible(true).clearTint().setScale(1)
+        setCenteredCircleHitbox(spore, ENEMY_PROJECTILE.hitboxRadius)
         spore.setVelocity(Math.cos(angle) * projectileSpeed, Math.sin(angle) * projectileSpeed)
-        this.time.delayedCall(ENEMY_PROJECTILE.lifetime, () => spore.setActive(false).setVisible(false))
+        spore.setData('expiresAt', this.time.now + ENEMY_PROJECTILE.lifetime)
       }
     }
   }
@@ -1289,20 +1380,19 @@ export default class SurvivalScene extends Phaser.Scene {
     const spore = this.enemyProjectiles.get(enemy.x, enemy.y, 'spore_e') as Phaser.Physics.Arcade.Sprite
     if (!spore) return
 
-    spore.setActive(true).setVisible(true)
-    spore.setCircle(ENEMY_PROJECTILE.hitboxRadius)
+    spore.setActive(true).setVisible(true).clearTint().setScale(1)
+    setCenteredCircleHitbox(spore, ENEMY_PROJECTILE.hitboxRadius)
     const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y)
     spore.setVelocity(Math.cos(angle) * ENEMY_PROJECTILE.speed, Math.sin(angle) * ENEMY_PROJECTILE.speed)
-
-    this.time.delayedCall(ENEMY_PROJECTILE.lifetime, () => {
-      if (spore.active) spore.setActive(false).setVisible(false)
-    })
+    spore.setData('expiresAt', this.time.now + ENEMY_PROJECTILE.lifetime)
   }
 
-  private damageEnemy(enemy: Phaser.Physics.Arcade.Sprite, damageAmount: number) {
+  private damageEnemy(enemy: Phaser.Physics.Arcade.Sprite, damageAmount: number, fromClone = false) {
+    if (!enemy || !enemy.active || this.gameEnded) return
+
     const isElite = enemy.getData('isElite') === true
     const eliteMod = enemy.getData('eliteModifier') as EliteModifier | undefined
-    
+
     // Armored elites take 25% reduced damage
     const actualBaseDamage = eliteMod?.behaviour === 'armored' ? damageAmount * 0.75 : damageAmount
 
@@ -1321,6 +1411,11 @@ export default class SurvivalScene extends Phaser.Scene {
 
     soundManager.playHit()
 
+    if (fromClone && this.hasActiveCombo('vampire_tempest') && this.playerHp < this.playerMaxHp) {
+      const heal = Math.max(1, Math.round(finalDamage * 0.15))
+      this.playerHp = Math.min(this.playerMaxHp, this.playerHp + heal)
+    }
+
     if (isCrit && this.hasActiveCombo('lethal_magnet')) {
       this.pullXpGems()
     }
@@ -1331,10 +1426,13 @@ export default class SurvivalScene extends Phaser.Scene {
       this.kills++
       this.score += xpVal * SCORING.enemyKillMult
 
+      if (this.mutationState.lifestealStacks > 0 && this.playerHp < this.playerMaxHp) {
+        this.playerHp = Math.min(this.playerMaxHp, this.playerHp + 5 * this.mutationState.lifestealStacks)
+      }
+
       // Elite On-Death Behaviors
       if (isElite && eliteMod) {
         if (eliteMod.behaviour === 'volatile') {
-          // Volatile explosion
           soundManager.playExplosion()
           this.combatVisuals.showWarningRing(enemy.x, enemy.y, 110, 400, 0xef4444)
           const distToPlayer = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y)
@@ -1342,17 +1440,20 @@ export default class SurvivalScene extends Phaser.Scene {
             this.damagePlayer(25)
           }
         } else if (eliteMod.behaviour === 'split') {
-          // Split into 2 mini cells
           for (let s = 0; s < 2; s++) {
-            const offsetX = (s === 0 ? -15 : 15)
-            const miniKey = enemy.getData('enemyType') || 'enemy_eater'
-            const mini = this.enemies.create(enemy.x + offsetX, enemy.y, miniKey) as Phaser.Physics.Arcade.Sprite
-            mini.setActive(true).setVisible(true)
-            mini.setScale(0.7)
+            const offsetX = s === 0 ? -18 : 18
+            const miniKey = (enemy.getData('enemyType') as string) || 'enemy_eater'
+            const safeMiniKey = miniKey === 'boss' ? 'enemy_eater' : miniKey
+            const mx = Phaser.Math.Clamp(enemy.x + offsetX, SPAWN_BOUNDS.min, SPAWN_BOUNDS.max)
+            const my = Phaser.Math.Clamp(enemy.y, SPAWN_BOUNDS.min, SPAWN_BOUNDS.max)
+            const mini = this.enemies.create(mx, my, safeMiniKey) as Phaser.Physics.Arcade.Sprite
+            mini.setActive(true).setVisible(true).setScale(0.7).setCollideWorldBounds(true)
+            setCenteredCircleHitbox(mini, 9)
             mini.setData('hp', 25)
             mini.setData('maxHp', 25)
             mini.setData('speed', 130)
             mini.setData('xpValue', 15)
+            mini.setData('enemyType', safeMiniKey)
           }
           this.enemiesRemainingInWave += 2
         }
@@ -1361,7 +1462,7 @@ export default class SurvivalScene extends Phaser.Scene {
       if (enemy === this.boss) {
         this.bossDefeated = true
         soundManager.playExplosion()
-        this.cameras.main.shake(500, 0.02)
+        safeCameraShake(this, 500, 0.02)
         this.boss = null
         const bossConfig = this.bossIsMini ? BOSS_MINI : BOSS_MEGA
         for (let j = 0; j < bossConfig.deathGemCount; j++) {
@@ -1370,58 +1471,39 @@ export default class SurvivalScene extends Phaser.Scene {
       }
 
       enemy.destroy()
-      
-      this.enemiesRemainingInWave--
+
+      this.enemiesRemainingInWave = Math.max(0, this.enemiesRemainingInWave - 1)
       if (this.enemiesRemainingInWave <= 0 && this.waveActive) {
         this.waveActive = false
         this.waveStarting = true
-        
+
         const reward = getWaveReward(this.currentWave)
-        // Heal player
         const healAmount = Math.round(this.playerMaxHp * reward.healPct)
         this.playerHp = Math.min(this.playerHp + healAmount, this.playerMaxHp)
-        // Bonus XP
         this.playerXp += reward.bonusXp
-        // Check for level-up from bonus XP
+
         const result = computeLevelUps(this.playerLevel, this.playerXp, this.nextLevelXp)
         if (result.levelsGained > 0) {
           this.playerLevel = result.newLevel
           this.playerXp = result.newXp
           this.nextLevelXp = result.newNextLevelXp
           this.queueLevelUps(result.levelsGained, this.playerLevel - result.levelsGained + 1)
+        } else if (reward.grantMutation) {
+          // Grant bonus milestone mutation on Wave 3 & 7!
+          this.queueLevelUps(1, this.playerLevel)
         }
 
         if (this.currentWave >= this.totalWaves) {
-          // Victory
           this.time.delayedCall(SURVIVAL_VICTORY_DELAY, () => {
-            this.triggerVictory()
+            if (!this.gameEnded) this.triggerVictory()
           })
         } else {
-          // Next Wave
           this.time.delayedCall(SURVIVAL_INTER_WAVE_PAUSE, () => {
-            this.startWave(this.currentWave + 1)
+            if (!this.gameEnded && this.player?.active) this.startWave(this.currentWave + 1)
           })
         }
       }
     }
-  }
-
-  private showDamageText(x: number, y: number, amount: number, isCrit: boolean) {
-    const txt = this.add.text(x, y - 10, isCrit ? `CRIT! -${amount}` : `-${amount}`, {
-      fontFamily: 'monospace',
-      fontSize: isCrit ? '16px' : '12px',
-      color: isCrit ? '#ff0055' : '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3,
-    })
-
-    this.tweens.add({
-      targets: txt,
-      y: y - 35,
-      alpha: 0,
-      duration: 600,
-      onComplete: () => txt.destroy(),
-    })
   }
 
   private handleProjectileEnemyHit(
@@ -1430,8 +1512,13 @@ export default class SurvivalScene extends Phaser.Scene {
   ) {
     if (!sporeObj.active || !enemyObj.active) return
 
+    const hitSet = sporeObj.getData('hitSet') as Set<Phaser.Physics.Arcade.Sprite> | null
+    if (hitSet && hitSet.has(enemyObj)) return
+    if (hitSet) hitSet.add(enemyObj)
+
     const damageMult = sporeObj.getData('damageMult') || 1
-    const isPiercing = sporeObj.getData('piercing') || false
+    const isPiercing = Boolean(sporeObj.getData('piercing'))
+    const fromClone = Boolean(sporeObj.getData('fromClone'))
 
     if (!isPiercing) {
       sporeObj.setActive(false).setVisible(false)
@@ -1443,7 +1530,19 @@ export default class SurvivalScene extends Phaser.Scene {
       dmg *= OVERCHARGE.damageMult
     }
 
-    this.damageEnemy(enemyObj, dmg)
+    triggerChainLightningOnHit({
+      scene: this,
+      state: this.mutationState,
+      time: this.time.now,
+      originEnemy: enemyObj,
+      baseDamage: dmg,
+      enemies: this.enemies,
+      activeCombos: this.activeCombos,
+      combatVisuals: this.combatVisuals,
+      damageEnemy: (target, amount) => this.damageEnemy(target, amount, fromClone),
+    })
+
+    this.damageEnemy(enemyObj, dmg, fromClone)
 
     if (this.hasToxinTrail) {
       this.spawnToxinCloud(enemyObj.x, enemyObj.y)
@@ -1454,8 +1553,19 @@ export default class SurvivalScene extends Phaser.Scene {
     playerObj: Phaser.Physics.Arcade.Sprite,
     enemyObj: Phaser.Physics.Arcade.Sprite
   ) {
-    if (this.time.now < this.lastPlayerDamageTime + PLAYER.damageCooldown) return
-    if (!enemyObj.active || this.isInvulnerable) return
+    const now = this.time.now
+    if (!enemyObj.active) return
+
+    if (this.isParrying) {
+      const knockAng = Phaser.Math.Angle.Between(playerObj.x, playerObj.y, enemyObj.x, enemyObj.y)
+      enemyObj.x += Math.cos(knockAng) * 35
+      enemyObj.y += Math.sin(knockAng) * 35
+      this.damageEnemy(enemyObj, this.playerDamage * PARRY.reflectDamageMult)
+      this.combatVisuals.showFloatingText(this.player.x, this.player.y - 24, 'PARRY!', '#ffc83a', 14)
+      return
+    }
+
+    if (now < this.lastPlayerDamageTime + PLAYER.damageCooldown || this.isPlayerInvulnerable(now)) return
 
     const damage = enemyObj === this.boss ? COLLISION.bossBody : COLLISION.enemyBody
     this.damagePlayer(damage)
@@ -1475,11 +1585,39 @@ export default class SurvivalScene extends Phaser.Scene {
   }
 
   private handlePlayerEnemyProjectileHit(
-    playerObj: Phaser.Physics.Arcade.Sprite,
+    _playerObj: Phaser.Physics.Arcade.Sprite,
     sporeObj: Phaser.Physics.Arcade.Sprite
   ) {
-    if (!sporeObj.active || this.isInvulnerable) return
+    if (!sporeObj.active) return
+    const now = this.time.now
+
+    if (this.isParrying) {
+      const body = sporeObj.body as Phaser.Physics.Arcade.Body | undefined
+      const vx = body?.velocity.x ?? 0
+      const vy = body?.velocity.y ?? 0
+      sporeObj.setActive(false).setVisible(false)
+      sporeObj.body?.stop()
+
+      const reflected = this.playerProjectiles.get(this.player.x, this.player.y, this.activeProjTexture) as Phaser.Physics.Arcade.Sprite
+      if (reflected) {
+        resetPooledProjectile(reflected, this.activeProjTexture, PLAYER_PROJECTILE.hitboxRadius + 2)
+        reflected.setScale(1.4).setTint(0xffc83a)
+        const target = this.getClosestActiveEnemy()
+        const ang = target
+          ? Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y)
+          : Math.atan2(-vy, -vx)
+        reflected.setVelocity(Math.cos(ang) * (PLAYER_PROJECTILE.speed * 1.2), Math.sin(ang) * (PLAYER_PROJECTILE.speed * 1.2))
+        reflected.setData('damageMult', PARRY.reflectDamageMult)
+        reflected.setData('expiresAt', now + PLAYER_PROJECTILE.lifetime)
+      }
+      soundManager.playHover()
+      this.combatVisuals.showFloatingText(this.player.x, this.player.y - 24, 'REFLECT 2X!', '#ffc83a', 14)
+      return
+    }
+
+    if (this.isPlayerInvulnerable(now)) return
     sporeObj.setActive(false).setVisible(false)
+    sporeObj.body?.stop()
     this.damagePlayer(COLLISION.enemyProjectile)
   }
 
@@ -1519,18 +1657,27 @@ export default class SurvivalScene extends Phaser.Scene {
 
   private damagePlayer(amount: number) {
     const now = this.time.now
-    if (this.gameEnded || this.isInvulnerable || now < this.lastPlayerDamageTime + this.playerDamageCooldown) {
+    if (this.gameEnded || this.isPlayerInvulnerable(now) || now < this.lastPlayerDamageTime + this.playerDamageCooldown) {
       return
     }
 
     this.lastPlayerDamageTime = now
-    this.playerHp -= amount
-    this.damageTaken += amount
+    const remaining = absorbWithShieldBarrier(this.mutationState, amount, now)
+    if (remaining <= 0) {
+      soundManager.playHover()
+      this.combatVisuals.showFloatingText(this.player.x, this.player.y - 18, `SHIELD -${Math.round(amount)}`, '#06b6d4', 11)
+      return
+    }
+
+    this.playerHp -= remaining
+    this.damageTaken += remaining
     soundManager.playHit()
-    this.cameras.main.shake(150, 0.008)
+    safeCameraShake(this, 150, 0.008)
 
     this.player.setTint(0xff0055)
-    this.time.delayedCall(120, () => this.player.clearTint())
+    this.time.delayedCall(120, () => {
+      if (this.player?.active) this.player.clearTint()
+    })
 
     if (this.playerHp <= 0) {
       this.triggerGameOver()
@@ -1567,9 +1714,11 @@ export default class SurvivalScene extends Phaser.Scene {
     if (sb.hasVoidCore) this.hasVoidCore = true
     if (sb.hasSplitClone && !this.hasSplitClone) {
       this.hasSplitClone = true
-      this.cloneSprite = this.physics.add.sprite(this.player.x + 40, this.player.y, 'player_virus')
-      this.cloneSprite.setScale(0.7).setTint(0xec4899)
+      this.cloneSprite = this.physics.add.sprite(this.player.x + 40, this.player.y, this.activeCharTexture)
+      this.cloneSprite.setScale(0.65).setTint(0xec4899).setDepth(5)
     }
+
+    applyExpansionMutation(this, this.mutationState, mutation, this.player)
 
     this.activeCombos = getActiveCombos(this.activeMutations)
 
@@ -1599,17 +1748,18 @@ export default class SurvivalScene extends Phaser.Scene {
     if (this.gameEnded) return
     this.gameEnded = true
     soundManager.playExplosion()
-    this.gameTimerEvent.remove()
+    this.gameTimerEvent?.remove()
+    this.cleanupScene()
     this.scene.pause()
 
     this.configCallbacks.onGameOver({
-      score: this.score,
+      score: Math.round(this.score),
       level: this.playerLevel,
       kills: this.kills,
       survivalTime: this.survivalTime,
       mutationsCount: this.activeMutations.length,
-      damageDealt: this.damageDealt,
-      damageTaken: this.damageTaken,
+      damageDealt: Math.round(this.damageDealt),
+      damageTaken: Math.round(this.damageTaken),
       criticalHits: this.criticalHits,
       bossDefeated: this.bossDefeated,
       wave: this.currentWave,
@@ -1620,18 +1770,19 @@ export default class SurvivalScene extends Phaser.Scene {
     if (this.gameEnded) return
     this.gameEnded = true
     soundManager.playLevelUp()
-    this.gameTimerEvent.remove()
+    this.gameTimerEvent?.remove()
+    this.cleanupScene()
     this.scene.pause()
 
     this.configCallbacks.onVictory({
-      score: this.score,
+      score: Math.round(this.score),
       level: this.playerLevel,
       kills: this.kills,
       survivalTime: this.survivalTime,
       wavesCleared: this.currentWave,
       mutationsCount: this.activeMutations.length,
-      damageDealt: this.damageDealt,
-      damageTaken: this.damageTaken,
+      damageDealt: Math.round(this.damageDealt),
+      damageTaken: Math.round(this.damageTaken),
       criticalHits: this.criticalHits,
       bossDefeated: this.bossDefeated,
     })
@@ -1672,11 +1823,14 @@ export default class SurvivalScene extends Phaser.Scene {
         ? TOXIC_CLOUD.damagePerTick * 1.25
         : TOXIC_CLOUD.damagePerTick
       if (now >= lastDamageAt + TOXIC_CLOUD.tickInterval) {
+        const hasCryoToxic = this.hasActiveCombo('cryo_toxic_blizzard')
         this.enemies.getChildren().forEach((enemyObj) => {
           if (!enemyObj.active) return
           const enemy = enemyObj as Phaser.Physics.Arcade.Sprite
           if (Phaser.Math.Distance.Between(cloud.x, cloud.y, enemy.x, enemy.y) <= cloudRadius) {
-            this.damageEnemy(enemy, tickDamage)
+            const frosted = ((enemy.getData('frostedUntil') as number | undefined) ?? -Infinity) >= now
+            const finalTick = hasCryoToxic && frosted ? tickDamage * 1.5 : tickDamage
+            this.damageEnemy(enemy, finalTick)
           }
         })
         cloud.setData('lastDamageAt', now)

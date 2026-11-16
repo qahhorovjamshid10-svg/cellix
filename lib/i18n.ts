@@ -129,7 +129,7 @@ export const translations = {
     progress: 'Jarayon',
     
     // Social
-    createdBy: '@iflxczz tomonidan yaratilgan • CELLIX v1.2',
+    createdBy: '@iflxczz tomonidan yaratilgan • CELLIX 2.0',
     
     // Game modes in stats
     classic: 'Klassik',
@@ -280,7 +280,7 @@ export const translations = {
     progress: 'Progress',
     
     // Social
-    createdBy: 'Created by @iflxczz • CELLIX v1.2',
+    createdBy: 'Created by @iflxczz • CELLIX 2.0',
     
     // Game modes in stats
     classic: 'Classic',

@@ -4,6 +4,7 @@ import { checkPersistentRateLimit, getRequestRateLimitKey } from '@/lib/ratelimi
 import { generateSessionToken, hashSessionToken, SESSION_TTL_MS } from '@/lib/security'
 import { getDailyChallenge } from '@/lib/game/daily'
 import { getAuthenticatedPlayer, createSession, SAFE_PLAYER_SELECT } from '@/lib/auth'
+import { generateRunSeed, generateRunConstraints } from '@/lib/game/serverValidation'
 
 const GAME_MODES = ['classic', 'survival', 'daily', 'biowar'] as const
 type GameMode = (typeof GAME_MODES)[number]
@@ -52,6 +53,10 @@ export async function POST(req: Request) {
     const challengeDate = challenge?.date
     const expiresAt = new Date(startTime + SESSION_TTL_MS)
 
+    // Authoritative server-owned seed and constraints
+    const seed = generateRunSeed(gameMode, challengeDate)
+    const constraints = generateRunConstraints(gameMode, seed)
+
     // Enforce 1-play daily limit on server: block if player already completed today's daily
     if (gameMode === 'daily' && challengeDate) {
       const existingDaily = await prisma.dailyResult.findUnique({
@@ -88,12 +93,16 @@ export async function POST(req: Request) {
         startedAt: new Date(startTime),
         expiresAt,
         playerId: player.id,
+        seed,
+        constraints,
+        runVersion: 1,
       },
     })
 
     const responseData = {
       success: true,
       token,
+      seed,
       startTime,
       expiresAt: expiresAt.toISOString(),
       challenge,

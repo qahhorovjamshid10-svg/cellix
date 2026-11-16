@@ -235,6 +235,24 @@ export type CellSkinId =
   | 'void_purple'
   | 'glitch_matrix'
   | 'golden_prestige'
+  | 'classic_prism'
+  | 'survival_bastion'
+  | 'daily_chronos'
+  | 'biowar_leviathan'
+
+export type ArenaAffinity = 'classic' | 'survival' | 'daily' | 'biowar' | 'universal'
+
+export type CellModel3DType =
+  | 'sphere_visor'
+  | 'bio_hazard'
+  | 'plasma_core'
+  | 'void_orb'
+  | 'prism_stealth'
+  | 'crown_sovereign'
+  | 'helix_crystal'
+  | 'bastion_mech'
+  | 'chrono_octa'
+  | 'leviathan_apex'
 
 export interface CellSkin {
   id: CellSkinId
@@ -245,9 +263,13 @@ export interface CellSkin {
   primaryColor: number
   secondaryColor: number
   accentColor: number
+  projectileColor: number
   glowColor: string
   trailColor: string
   rarity: 'Common' | 'Rare' | 'Epic' | 'Legendary'
+  arenaAffinity: ArenaAffinity
+  model3dType: CellModel3DType
+  isNew3D?: boolean
   unlockType: 'default' | 'coins'
   unlockRequirement: number
   coinCost: number

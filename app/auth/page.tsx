@@ -4,30 +4,38 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
-import { LogIn, UserPlus, Mail, Lock, User, Hexagon, Eye, EyeOff } from 'lucide-react'
+import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff, ArrowLeft, Crosshair } from 'lucide-react'
 import { useLanguage } from '@/components/LanguageContext'
+import { soundManager } from '@/lib/game/engine/SoundManager'
+import ScrambleText from '@/components/v26/ScrambleText'
+import CellixLoader from '@/components/v26/CellixLoader'
 
 export default function AuthPage() {
   const router = useRouter()
   const { lang } = useLanguage()
   const isUz = lang === 'uz'
-  
+
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [form, setForm] = useState({ username: '', email: '', password: '' })
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
+  const handleHover = () => soundManager.playHover()
+  const handleClick = () => soundManager.playClick()
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    handleClick()
     setError(null)
     setLoading(true)
 
     try {
       const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register'
-      const body = mode === 'login' 
-        ? { email: form.email, password: form.password }
-        : { username: form.username, email: form.email, password: form.password }
+      const body =
+        mode === 'login'
+          ? { email: form.email, password: form.password }
+          : { username: form.username, email: form.email, password: form.password }
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -43,6 +51,7 @@ export default function AuthPage() {
         throw new Error(data.error || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
       }
 
+      soundManager.playLevelUp()
       if (data.player?.id) {
         router.push(`/profile/${data.player.id}`)
       } else {
@@ -69,8 +78,8 @@ export default function AuthPage() {
       registerBtn: 'HISOB YARATISH',
       noAccount: "Hisobingiz yo'qmi?",
       haveAccount: 'Hisobingiz bormi?',
-      welcome: 'CELLIX ARENASIGA XUSH KELIBSIZ',
-      welcomeDesc: 'Hisobingizga kiring yoki yangi hisob yarating',
+      welcome: 'COMMAND ACCESS',
+      welcomeDesc: 'Kiber-profilingizga kiring yoki yangi jangchi hisobini oching',
     },
     en: {
       login: 'LOGIN',
@@ -83,63 +92,65 @@ export default function AuthPage() {
       registerBtn: 'CREATE ACCOUNT',
       noAccount: "Don't have an account?",
       haveAccount: 'Already have an account?',
-      welcome: 'WELCOME TO CELLIX ARENA',
-      welcomeDesc: 'Sign in to your account or create a new one',
-    }
+      welcome: 'COMMAND ACCESS',
+      welcomeDesc: 'Authenticate to access your battle dossier and stats',
+    },
   }
 
   const t = translations[isUz ? 'uz' : 'en']
 
   return (
-    <div className="min-h-screen bg-[#040416] text-white flex flex-col font-mono selection:bg-purple-500/30">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-bone v-dots">
       <Navbar />
-      
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md relative z-10">
-          {/* Cyberpunk decorative elements */}
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-cyan-600 rounded-2xl blur opacity-20 animate-pulse" />
-          
-          <div className="relative bg-[#0a0a2a]/90 backdrop-blur-xl border border-purple-500/30 rounded-2xl p-8 shadow-[0_0_40px_rgba(168,85,247,0.1)]">
-            
-            <div className="flex flex-col items-center mb-8">
-              <div className="w-16 h-16 rounded-full bg-purple-950/50 border border-purple-500/50 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(168,85,247,0.3)]">
-                <Hexagon className="w-8 h-8 text-cyan-400" />
+
+      <div className="relative z-10 flex flex-1 items-center justify-center p-4 sm:p-6">
+        <div className="w-full max-w-md">
+          <div className="v-panel v-accent-acid v-enter p-6 sm:p-8">
+            <div className="mb-7 space-y-2 border-b border-line pb-5 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center border border-acid/40 bg-ink text-acid v-chamfer-sm">
+                <Crosshair className="h-6 w-6" />
               </div>
-              <h1 className="text-2xl font-bold text-center tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
-                {t.welcome}
-              </h1>
-              <p className="text-sm text-slate-400 mt-2 text-center">
-                {t.welcomeDesc}
-              </p>
+              <span className="v-label !text-acid">
+                <ScrambleText text="SESSION // AUTHENTICATION" />
+              </span>
+              <h1 className="v-display text-4xl text-bone sm:text-5xl">{t.welcome}</h1>
+              <p className="font-sans text-xs text-mute">{t.welcomeDesc}</p>
             </div>
 
-            <div className="flex bg-[#040416] rounded-lg p-1 mb-8 border border-slate-800">
+            {/* Mode Switch */}
+            <div className="mb-6 grid grid-cols-2 border border-line bg-ink p-1 font-mono text-xs font-bold">
               <button
-                onClick={() => setMode('login')}
-                className={`flex-1 py-2.5 text-sm font-bold tracking-wider rounded-md transition-all flex items-center justify-center gap-2 ${
-                  mode === 'login' 
-                    ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]' 
-                    : 'text-slate-500 hover:text-slate-300'
+                type="button"
+                onMouseEnter={handleHover}
+                onClick={() => {
+                  handleClick()
+                  setMode('login')
+                }}
+                className={`flex items-center justify-center gap-1.5 py-2.5 transition-colors ${
+                  mode === 'login' ? 'bg-acid text-ink' : 'text-mute hover:text-bone'
                 }`}
               >
-                <LogIn className="w-4 h-4" />
-                {t.login}
+                <LogIn className="h-3.5 w-3.5" />
+                <span>{t.login}</span>
               </button>
               <button
-                onClick={() => setMode('register')}
-                className={`flex-1 py-2.5 text-sm font-bold tracking-wider rounded-md transition-all flex items-center justify-center gap-2 ${
-                  mode === 'register' 
-                    ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' 
-                    : 'text-slate-500 hover:text-slate-300'
+                type="button"
+                onMouseEnter={handleHover}
+                onClick={() => {
+                  handleClick()
+                  setMode('register')
+                }}
+                className={`flex items-center justify-center gap-1.5 py-2.5 transition-colors ${
+                  mode === 'register' ? 'bg-tide text-ink' : 'text-mute hover:text-bone'
                 }`}
               >
-                <UserPlus className="w-4 h-4" />
-                {t.register}
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>{t.register}</span>
               </button>
             </div>
 
             {error && (
-              <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/50 text-red-400 text-sm text-center">
+              <div className="mb-5 border border-ember/60 bg-ember/10 p-3 text-center font-mono text-xs font-semibold text-ember">
                 {error}
               </div>
             )}
@@ -147,17 +158,17 @@ export default function AuthPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t.username}</label>
+                  <label className="v-label block">{t.username}</label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-5 w-5 text-slate-500" />
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                      <User className="h-4 w-4 text-dim" />
                     </div>
                     <input
                       type="text"
                       required
                       value={form.username}
-                      onChange={e => setForm({...form, username: e.target.value})}
-                      className="block w-full pl-10 pr-3 py-3 bg-[#040416] border border-slate-700 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                      onChange={(e) => setForm({ ...form, username: e.target.value })}
+                      className="v-input !pl-9"
                       placeholder="neon_ninja"
                     />
                   </div>
@@ -165,80 +176,93 @@ export default function AuthPage() {
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <label className="v-label block">
                   {mode === 'login' ? t.loginField : t.registerEmail}
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-slate-500" />
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <Mail className="h-4 w-4 text-dim" />
                   </div>
                   <input
                     type={mode === 'login' ? 'text' : 'email'}
                     required
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="block w-full pl-10 pr-3 py-3 bg-[#040416] border border-slate-700 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
-                    placeholder={mode === 'login' ? (isUz ? 'username yoki pochta...' : 'username or email...') : 'player@cellix.net'}
+                    className="v-input !pl-9"
+                    placeholder={
+                      mode === 'login'
+                        ? isUz
+                          ? 'username yoki pochta...'
+                          : 'username or email...'
+                        : 'player@cellix.net'
+                    }
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t.password}</label>
+                <label className="v-label block">{t.password}</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-slate-500" />
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <Lock className="h-4 w-4 text-dim" />
                   </div>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={form.password}
-                    onChange={e => setForm({...form, password: e.target.value})}
-                    className="block w-full pl-10 pr-10 py-3 bg-[#040416] border border-slate-700 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    className="v-input !pl-9 !pr-10"
                     placeholder="••••••••"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300 focus:outline-none"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-dim hover:text-bone focus:outline-none"
                   >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-6 py-3.5 px-4 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold rounded-lg tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:shadow-[0_0_30px_rgba(34,211,238,0.6)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button type="submit" disabled={loading} className="v-btn mt-4 w-full">
                 {loading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <CellixLoader
+                    variant="compact"
+                    label={isUz ? 'TEKSHIRILMOQDA...' : 'AUTHENTICATING...'}
+                    className="text-ink"
+                  />
                 ) : (
                   <>
-                    {mode === 'login' ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
-                    {mode === 'login' ? t.loginBtn : t.registerBtn}
+                    {mode === 'login' ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+                    <span>{mode === 'login' ? t.loginBtn : t.registerBtn}</span>
                   </>
                 )}
               </button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-slate-500">
+            <div className="mt-6 text-center font-mono text-xs text-mute">
               {mode === 'login' ? t.noAccount : t.haveAccount}{' '}
               <button
+                type="button"
                 onClick={() => {
+                  handleClick()
                   setMode(mode === 'login' ? 'register' : 'login')
                   setError(null)
                 }}
-                className="text-cyan-400 hover:text-cyan-300 font-semibold"
+                className="ml-1 font-bold text-acid hover:underline"
               >
                 {mode === 'login' ? t.register : t.login}
               </button>
             </div>
-            
-            <div className="mt-8 text-center">
-              <Link href="/" className="text-xs text-slate-600 hover:text-slate-400 transition-colors uppercase tracking-widest">
-                ← {isUz ? 'Asosiy sahifaga qaytish' : 'Back to Home'}
+
+            <div className="mt-6 border-t border-line pt-4 text-center">
+              <Link
+                href="/"
+                onMouseEnter={handleHover}
+                className="v-link inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-mute hover:text-bone"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>{isUz ? 'Asosiy sahifaga qaytish' : 'Back to Home'}</span>
               </Link>
             </div>
           </div>

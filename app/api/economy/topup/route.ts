@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { COIN_PACKAGES } from '@/lib/game/coinPackages'
 import { prisma } from '@/lib/prisma'
 import { getAuthenticatedPlayer } from '@/lib/auth'
+import { enforceLayeredRateLimit } from '@/lib/ratelimit'
 
 /**
  * Demo Coin Top-Up Endpoint.
@@ -27,6 +28,24 @@ export async function POST(req: Request) {
       )
     }
 
+    const authenticatedPlayer = await getAuthenticatedPlayer()
+    if (!authenticatedPlayer) {
+      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 })
+    }
+
+    const rateCheck = await enforceLayeredRateLimit(req, {
+      scope: 'topup',
+      playerId: authenticatedPlayer.id,
+      maxRequests: 5,
+      windowMs: 60000,
+    })
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many top-up attempts. Please wait.' },
+        { status: 429, headers: rateCheck.headers }
+      )
+    }
+
     const body = (await req.json()) as unknown
     const coins = body && typeof body === 'object' && !Array.isArray(body)
       ? (body as { coins?: unknown }).coins
@@ -34,11 +53,6 @@ export async function POST(req: Request) {
 
     if (typeof coins !== 'number' || !Number.isInteger(coins) || !COIN_PACKAGES.some((item) => item.coins === coins)) {
       return NextResponse.json({ error: 'Invalid coin package.' }, { status: 400 })
-    }
-
-    const authenticatedPlayer = await getAuthenticatedPlayer()
-    if (!authenticatedPlayer) {
-      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 })
     }
 
     const updated = await prisma.player.update({

@@ -2,23 +2,57 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, Coins, CreditCard, LockKeyhole, ShoppingCart, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check, Coins, CreditCard, LockKeyhole, ShoppingCart, Zap } from 'lucide-react'
 import { useLanguage } from '@/components/LanguageContext'
 import CoinWallet, { useCoinBalance } from '@/components/CoinWallet'
 import PixelCharacterAvatar from '@/components/PixelCharacterAvatar'
 import { COIN_PACKAGES } from '@/lib/game/coinPackages'
+import { soundManager } from '@/lib/game/engine/SoundManager'
+import { Reveal, MaskText } from '@/components/v26/Reveal'
+import ScrambleText from '@/components/v26/ScrambleText'
+import CellixLoader from '@/components/v26/CellixLoader'
 import {
   CELL_SKINS,
   COINS_CHANGED_EVENT,
   addCoins,
+  getArenaMatchedSkins,
   getOwnedSkinIds,
   getSelectedSkinId,
   purchaseSkin,
   setSelectedSkinId,
   syncCoinBalance,
   syncOwnedSkinIds,
+  type ArenaAffinity,
   type CellSkinId,
 } from '@/lib/game/cosmetics'
+
+function rarityAccent(rarity: string) {
+  switch (rarity) {
+    case 'Legendary':
+      return { panel: 'v-accent-gold', text: 'text-gold' }
+    case 'Epic':
+      return { panel: 'v-accent-acid', text: 'text-acid' }
+    case 'Rare':
+      return { panel: 'v-accent-tide', text: 'text-tide' }
+    default:
+      return { panel: 'v-accent-bone', text: 'text-bone' }
+  }
+}
+
+function arenaBadge(affinity: ArenaAffinity, isUz: boolean) {
+  switch (affinity) {
+    case 'classic':
+      return { cls: 'v-accent-acid', label: isUz ? 'KLASSIK ARENA' : 'CLASSIC LAB' }
+    case 'survival':
+      return { cls: 'v-accent-ember', label: isUz ? 'SURVIVAL ARENA' : 'SURVIVAL SECTOR' }
+    case 'daily':
+      return { cls: 'v-accent-gold', label: isUz ? 'KUNLIK SINOV' : 'DAILY VAULT' }
+    case 'biowar':
+      return { cls: 'v-accent-tide', label: 'BIO-WAR 30' }
+    default:
+      return { cls: 'v-accent-bone', label: isUz ? 'BARCHA ARENALAR' : 'UNIVERSAL' }
+  }
+}
 
 export default function SkinMarket() {
   const { lang, t } = useLanguage()
@@ -26,8 +60,13 @@ export default function SkinMarket() {
   const balance = useCoinBalance()
   const [selectedSkinId, setSelectedSkinIdState] = useState<CellSkinId>('neon_cyan')
   const [ownedSkinIds, setOwnedSkinIds] = useState<CellSkinId[]>(['neon_cyan'])
+  const [arenaFilter, setArenaFilter] = useState<ArenaAffinity | 'all'>('all')
   const [notice, setNotice] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
+  const visibleSkins = getArenaMatchedSkins(arenaFilter)
+
+  const handleHover = () => soundManager.playHover()
+  const handleClick = () => soundManager.playClick()
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -51,6 +90,7 @@ export default function SkinMarket() {
   }
 
   const handlePurchase = async (skinId: CellSkinId) => {
+    handleClick()
     setBusyAction(skinId)
     try {
       const response = await fetch('/api/economy/purchase', {
@@ -65,6 +105,7 @@ export default function SkinMarket() {
       }
 
       if (response.ok) {
+        soundManager.playLevelUp()
         if (typeof data.coins === 'number') syncCoinBalance(data.coins)
         const nextOwned = Array.isArray(data.ownedSkins)
           ? syncOwnedSkinIds(data.ownedSkins.filter((id): id is CellSkinId => typeof id === 'string'))
@@ -79,12 +120,14 @@ export default function SkinMarket() {
         return
       }
 
-      // Local guest mode remains playable until a profile is created.
       const result = purchaseSkin(skinId)
       setOwnedSkinIds(result.ownedSkinIds)
+      if (result.ok) soundManager.playLevelUp()
       showNotice(
         result.ok
-          ? (isUz ? 'Skin muvaffaqiyatli sotib olindi.' : 'Skin purchased successfully.')
+          ? isUz
+            ? 'Skin muvaffaqiyatli sotib olindi.'
+            : 'Skin purchased successfully.'
           : t('notEnoughCoins')
       )
     } catch {
@@ -95,6 +138,7 @@ export default function SkinMarket() {
   }
 
   const handleTopUp = async (coins: number) => {
+    handleClick()
     setBusyAction(`topup-${coins}`)
     try {
       const response = await fetch('/api/economy/topup', {
@@ -104,6 +148,7 @@ export default function SkinMarket() {
       })
       const data = (await response.json().catch(() => ({}))) as { coins?: unknown; error?: unknown }
 
+      soundManager.playPowerup()
       if (response.ok && typeof data.coins === 'number') {
         syncCoinBalance(data.coins)
         showNotice(`+${coins.toLocaleString()} ${t('coinPackageAdded')} • ${t('demoTopup')}`)
@@ -118,6 +163,7 @@ export default function SkinMarket() {
 
       showNotice(typeof data.error === 'string' ? data.error : t('paymentUnavailable'))
     } catch {
+      soundManager.playPowerup()
       addCoins(coins)
       showNotice(`+${coins.toLocaleString()} ${t('coinPackageAdded')} • ${t('demoTopup')}`)
     } finally {
@@ -126,131 +172,217 @@ export default function SkinMarket() {
   }
 
   const handleEquip = (skinId: CellSkinId) => {
+    handleClick()
     if (!ownedSkinIds.includes(skinId)) return
     setSelectedSkinId(skinId)
     setSelectedSkinIdState(skinId)
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-73px)] overflow-hidden px-4 py-8 sm:px-8">
-      <div className="pointer-events-none absolute -left-24 top-16 h-80 w-80 rounded-full bg-cyan-500/10 blur-[120px]" />
-      <div className="pointer-events-none absolute -right-24 bottom-10 h-96 w-96 rounded-full bg-purple-600/10 blur-[140px]" />
-
-      <main className="relative z-10 mx-auto max-w-6xl space-y-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-3">
-            <Link href="/" className="inline-flex items-center gap-2 font-mono text-xs font-bold text-slate-400 transition-colors hover:text-white">
+    <div className="relative min-h-[calc(100vh-64px)] px-4 py-10 sm:px-8">
+      <main className="relative z-10 mx-auto max-w-7xl space-y-12">
+        {/* Armory Header */}
+        <div className="flex flex-wrap items-end justify-between gap-6 border-b border-line pb-8">
+          <div className="space-y-4">
+            <Link
+              href="/"
+              onMouseEnter={handleHover}
+              onClick={handleClick}
+              className="v-btn-ghost !px-4 !py-2 !text-sm"
+            >
               <ArrowLeft className="h-4 w-4" />
-              HUB
+              <span>HUB</span>
             </Link>
-            <div className="flex items-center gap-2 text-cyan-300">
-              <Sparkles className="h-4 w-4 animate-pulse" />
-              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.22em]">CELLIX ARMORY / MARKET</span>
+            <div>
+              <span className="v-label block text-gold">
+                01 // <ScrambleText text="SPECIMEN ARMORY" />
+              </span>
+              <h1 className="v-display mt-2 text-5xl text-bone sm:text-7xl">
+                <MaskText
+                  lines={[
+                    <span key="t">
+                      {t('skinsTitle')} <span className="v-stroke-acid">3D</span>
+                    </span>,
+                  ]}
+                />
+              </h1>
+              <p className="mt-3 max-w-xl font-sans text-sm text-mute">{t('armorySubtitle')}</p>
             </div>
-            <h1 className="text-4xl font-black tracking-tight text-white sm:text-6xl">
-              {t('skinsTitle')} <span className="text-cyan-300">(8-BIT PIXEL HEROES)</span>
-            </h1>
-            <p className="max-w-xl font-mono text-sm leading-relaxed text-slate-400">{t('armorySubtitle')}</p>
           </div>
 
           <div className="space-y-2 text-right">
-            <span className="block font-mono text-[10px] font-bold uppercase tracking-widest text-slate-500">{t('coinWallet')}</span>
+            <span className="v-label block">{t('coinWallet')}</span>
             <CoinWallet />
           </div>
         </div>
 
         {notice && (
-          <div className="rounded-2xl border border-amber-500/40 bg-amber-950/50 px-4 py-3 font-mono text-xs text-amber-200">
-            {notice}
+          <div className="v-panel v-accent-acid v-enter flex items-center gap-3 px-5 py-3.5 font-mono text-xs text-acid">
+            <Zap className="h-4 w-4 shrink-0" />
+            <span>{notice}</span>
           </div>
         )}
 
-        <section className="rounded-3xl border border-amber-500/30 bg-amber-950/20 p-5 sm:p-6">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-amber-300">
-                <CreditCard className="h-4 w-4" />
-                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em]">COIN STORE / TEST MODE</span>
-              </div>
-              <h2 className="mt-2 font-mono text-xl font-black text-white">{t('coinPackagesTitle')}</h2>
-              <p className="mt-1 font-mono text-xs text-slate-400">{t('coinPackagesSubtitle')}</p>
-            </div>
-            <span className="rounded-lg border border-amber-500/30 bg-amber-950/60 px-2 py-1 font-mono text-[10px] font-bold text-amber-300">
-              {t('demoTopup')}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {COIN_PACKAGES.map((coinPackage) => (
-              <article key={coinPackage.coins} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-[10px] font-bold tracking-widest text-purple-300">{coinPackage.label}</span>
-                  <Coins className="h-4 w-4 text-amber-400" />
+        {/* Coin Store Packages */}
+        <Reveal>
+          <section className="v-panel v-accent-gold p-6 sm:p-8">
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
+              <div>
+                <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-gold">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  <span>CREDIT SUPPLY // TOP-UP</span>
                 </div>
-                <div className="mt-3 font-mono text-2xl font-black text-white">{coinPackage.coins.toLocaleString()}</div>
-                <div className="mt-2 text-[10px] font-mono uppercase tracking-wider text-slate-500">{t('coinPackagePrice')}</div>
-                <div className="mt-1 font-mono text-sm font-bold text-amber-300">{coinPackage.priceUzs.toLocaleString('uz-UZ')} so‘m</div>
-                <button
-                  type="button"
-                  onClick={() => void handleTopUp(coinPackage.coins)}
-                  disabled={busyAction !== null}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-3 py-2 font-mono text-[10px] font-bold text-slate-950 transition-colors hover:bg-amber-300 disabled:cursor-wait disabled:opacity-50"
+                <h2 className="v-display mt-2 text-3xl text-bone">{t('coinPackagesTitle')}</h2>
+                <p className="mt-1 font-sans text-xs text-mute">{t('coinPackagesSubtitle')}</p>
+              </div>
+              <span className="v-tag v-accent-gold">{t('demoTopup')}</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {COIN_PACKAGES.map((coinPackage) => (
+                <article
+                  key={coinPackage.coins}
+                  onMouseEnter={handleHover}
+                  className="v-card v-accent-gold flex flex-col justify-between bg-ink p-4"
                 >
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  {t('coinPackageBuy')}
-                </button>
-              </article>
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="v-label !text-gold">{coinPackage.label}</span>
+                      <Coins className="h-4 w-4 text-gold" />
+                    </div>
+                    <div className="v-display mt-3 text-3xl text-bone tabular-nums">
+                      +{coinPackage.coins.toLocaleString()}
+                    </div>
+                    <div className="v-label mt-3">{t('coinPackagePrice')}</div>
+                    <div className="mt-0.5 font-mono text-xs font-bold text-gold">
+                      {coinPackage.priceUzs.toLocaleString('uz-UZ')} so‘m
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleTopUp(coinPackage.coins)}
+                    disabled={busyAction !== null}
+                    className="v-btn mt-4 w-full !bg-gold !py-2.5 !text-sm !text-ink"
+                  >
+                    {busyAction === `topup-${coinPackage.coins}` ? (
+                      <CellixLoader variant="compact" label={isUz ? 'QOSHILMOQDA...' : 'ADDING...'} />
+                    ) : (
+                      <>
+                        <ShoppingCart className="h-3.5 w-3.5" />
+                        <span>{t('coinPackageBuy')}</span>
+                      </>
+                    )}
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+        </Reveal>
+
+        {/* Arena Affinity Filter Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-y border-line py-4">
+          <div className="space-y-1">
+            <span className="v-label block text-acid">
+              {isUz ? 'ARENAGA MOSLANGAN 3D MODELLAR' : 'ARENA-MATCHED 3D MODELS'}
+            </span>
+            <p className="font-sans text-xs text-mute">
+              {isUz
+                ? 'Har bir arena uslubi uchun maxsus ishlab chiqilgan 3D skinlarni filtrlang'
+                : 'Filter volumetric 3D skins tuned for each combat arena'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(
+              [
+                { id: 'all', label: isUz ? 'BARCHASI' : 'ALL ARENAS' },
+                { id: 'classic', label: 'CLASSIC' },
+                { id: 'survival', label: 'SURVIVAL' },
+                { id: 'daily', label: 'DAILY' },
+                { id: 'biowar', label: 'BIO-WAR 30' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onMouseEnter={handleHover}
+                onClick={() => {
+                  handleClick()
+                  setArenaFilter(tab.id)
+                }}
+                className={`v-chamfer-sm border px-3.5 py-2 font-mono text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                  arenaFilter === tab.id
+                    ? tab.id === 'biowar'
+                      ? 'border-tide bg-tide/15 text-tide'
+                      : tab.id === 'survival'
+                        ? 'border-ember bg-ember/15 text-ember'
+                        : tab.id === 'daily'
+                          ? 'border-gold bg-gold/15 text-gold'
+                          : 'border-acid bg-acid/15 text-acid'
+                    : 'border-line bg-ink-2 text-mute hover:border-line-strong hover:text-bone'
+                }`}
+              >
+                {tab.label}
+              </button>
             ))}
           </div>
-        </section>
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CELL_SKINS.map((skin) => {
+        {/* Skins Showcase Matrix */}
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleSkins.map((skin, idx) => {
             const isOwned = ownedSkinIds.includes(skin.id)
             const isEquipped = selectedSkinId === skin.id
             const canAfford = balance >= skin.coinCost
+            const accent = rarityAccent(skin.rarity)
+            const arenaMeta = arenaBadge(skin.arenaAffinity, isUz)
 
             return (
-              <article
-                key={skin.id}
-                className={`group relative overflow-hidden rounded-3xl border p-5 transition-all ${
-                  isEquipped
-                    ? 'border-cyan-400/70 bg-cyan-950/30 shadow-[0_0_30px_rgba(6,182,212,0.18)]'
-                    : isOwned
-                      ? 'border-slate-700 bg-slate-950/70 hover:border-purple-400/60'
-                      : 'border-slate-800 bg-slate-950/50'
-                }`}
-              >
-                <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: skin.glowColor }} />
-                <div className="relative space-y-5">
-                  <div className="flex items-start justify-between">
-                    <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl border border-white/10 shadow-inner" style={{ background: `radial-gradient(circle, ${skin.glowColor}55, #0f172a 70%)` }}>
-                      <PixelCharacterAvatar skin={skin} size={72} animated />
-                      {!isOwned && (
-                        <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-950/55 text-slate-200">
-                          <LockKeyhole className="h-6 w-6" />
-                        </span>
-                      )}
+              <Reveal key={skin.id} delay={idx * 50}>
+                <article
+                  onMouseEnter={handleHover}
+                  className={`v-card group ${isEquipped ? 'v-accent-acid bg-ink-3' : accent.panel} flex min-h-[360px] flex-col justify-between p-6`}
+                >
+                  <div className="space-y-5">
+                    <div className="flex items-start justify-between">
+                      {/* Volumetric 3D Specimen Pedestal */}
+                      <div className="v-chamfer relative flex h-24 w-24 items-center justify-center border border-line-strong bg-ink transition-transform duration-300 group-hover:-translate-y-1 group-hover:border-acid/60">
+                        <PixelCharacterAvatar skin={skin} size={82} animated />
+                        {!isOwned && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-ink/75 text-gold">
+                            <LockKeyhole className="h-6 w-6" />
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className={`v-tag ${accent.panel}`}>{skin.rarity}</span>
+                        <span className={`v-tag ${arenaMeta.cls}`}>{arenaMeta.label}</span>
+                        {skin.isNew3D && <span className="v-tag v-accent-acid">3D MODEL</span>}
+                        {isEquipped && <span className="v-tag v-accent-acid">ACTIVE</span>}
+                      </div>
                     </div>
-                    <span className="rounded-lg border border-purple-500/30 bg-purple-950/70 px-2 py-1 font-mono text-[10px] font-bold text-purple-300">
-                      {skin.rarity}
-                    </span>
+
+                    <div className="space-y-1.5">
+                      <div className="v-label">UNIT #{String(CELL_SKINS.indexOf(skin) + 1).padStart(2, '0')}</div>
+                      <h2 className="v-display text-3xl text-bone">
+                        {isUz ? skin.nameUz : skin.name}
+                      </h2>
+                      <p className="min-h-12 font-sans text-xs leading-relaxed text-mute">
+                        {isUz ? skin.descriptionUz : skin.description}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <h2 className="font-mono text-lg font-black text-white">{isUz ? skin.nameUz : skin.name}</h2>
-                    <p className="min-h-12 font-mono text-xs leading-relaxed text-slate-400">{isUz ? skin.descriptionUz : skin.description}</p>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-slate-800 pt-4">
-                    <div className="font-mono text-xs">
+                  <div className="mt-6 flex items-center justify-between border-t border-line pt-4">
+                    <div className="font-mono text-[11px] font-semibold">
                       {isOwned ? (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-300">
+                        <span className="inline-flex items-center gap-1.5 text-acid">
                           <Check className="h-3.5 w-3.5" />
                           {skin.unlockType === 'default' ? t('skinCommonOpen') : t('skinOwned')}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-slate-500">
+                        <span className="inline-flex items-center gap-1.5 text-dim">
                           <LockKeyhole className="h-3.5 w-3.5" />
                           {t('skinLocked')}
                         </span>
@@ -262,34 +394,38 @@ export default function SkinMarket() {
                         type="button"
                         onClick={() => handleEquip(skin.id)}
                         disabled={isEquipped}
-                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[10px] font-bold transition-all ${
+                        className={
                           isEquipped
-                            ? 'cursor-default bg-cyan-400 text-slate-950'
-                            : 'cursor-pointer border border-slate-700 bg-slate-900 text-slate-300 hover:border-cyan-400 hover:text-white'
-                        }`}
+                            ? 'v-btn !py-2 !px-4 !text-sm'
+                            : 'v-btn-ghost !py-2 !px-4 !text-sm'
+                        }
                       >
                         {isEquipped && <Check className="h-3.5 w-3.5" />}
-                        {isEquipped ? t('skinEquipped') : t('skinEquip')}
+                        <span>{isEquipped ? t('skinEquipped') : t('skinEquip')}</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={() => void handlePurchase(skin.id)}
                         disabled={!canAfford || busyAction !== null}
-                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[10px] font-bold transition-all ${
-                          canAfford
-                            ? 'cursor-pointer bg-amber-400 text-slate-950 hover:bg-amber-300'
-                            : 'cursor-not-allowed border border-slate-800 bg-slate-900 text-slate-600'
+                        className={`v-btn !py-2 !px-4 !text-sm ${
+                          canAfford ? '!bg-gold !text-ink' : '!bg-ink-3 !text-dim'
                         }`}
                       >
-                        <ShoppingCart className="h-3.5 w-3.5" />
-                        <span>{skin.coinCost.toLocaleString()}</span>
-                        <Coins className="h-3.5 w-3.5" />
+                        {busyAction === skin.id ? (
+                          <CellixLoader variant="compact" label="..." />
+                        ) : (
+                          <>
+                            <ShoppingCart className="h-3.5 w-3.5" />
+                            <span>{skin.coinCost.toLocaleString()}</span>
+                            <Coins className="h-3.5 w-3.5" />
+                          </>
+                        )}
                       </button>
                     )}
                   </div>
-                </div>
-              </article>
+                </article>
+              </Reveal>
             )
           })}
         </div>

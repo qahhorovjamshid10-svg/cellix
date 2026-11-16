@@ -110,7 +110,7 @@ export class PracticeScene extends Phaser.Scene {
     const skin = getSkinConfig(this.selectedSkinId)
     this.player = this.physics.add.sprite(ARENA.width / 2, ARENA.height / 2, `char_${skin.id}`)
     this.player.setCollideWorldBounds(true)
-    this.player.setCircle(PLAYER.hitboxRadius, 10, 10)
+    this.player.setCircle(PLAYER.hitboxRadius, 18, 18)
 
     // Camera
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08)

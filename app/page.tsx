@@ -2,238 +2,470 @@
 
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
-import HubHologramCanvas from '@/components/HubHologramCanvas'
 import { soundManager } from '@/lib/game/engine/SoundManager'
-import { Play, User, Trophy, Hexagon, Crosshair, ArrowRight, Sparkles, ShoppingBag } from 'lucide-react'
+import { getDailyChallengeModifier } from '@/lib/game/daily'
 import { useLanguage } from '@/components/LanguageContext'
+import { Reveal, MaskText } from '@/components/v26/Reveal'
+import ScrambleText from '@/components/v26/ScrambleText'
+import CountUp from '@/components/v26/CountUp'
+import Marquee from '@/components/v26/Marquee'
+import {
+  Play,
+  ArrowUpRight,
+  Crosshair,
+  ShieldAlert,
+  Flame,
+  Zap,
+  User,
+  Crown,
+  ShoppingBag,
+  Radio,
+  Keyboard,
+} from 'lucide-react'
 
 export default function HubLandingPage() {
   const { t, lang } = useLanguage()
   const isUz = lang === 'uz'
   const currentYear = new Date().getFullYear()
+  const dailyMod = getDailyChallengeModifier()
 
-  const handleHover = () => {
-    soundManager.playHover()
-  }
+  const handleHover = () => soundManager.playHover()
+  const handleClick = () => soundManager.playClick()
+
+  const sectors = [
+    {
+      index: '01',
+      href: '/game?mode=classic',
+      accent: 'v-accent-acid',
+      tagColor: 'text-acid',
+      tag: 'SOLO ARCADE',
+      title: t('modeClassic'),
+      desc: isUz
+        ? 'Cheksiz virus to‘dalari, adaptiv mutatsiyalar va global rekordlar poygasi.'
+        : 'Infinite pathogen swarm, adaptive mutation builds, and ranked ladder ascent.',
+      meta: 'ENDLESS // RANKED',
+      Icon: Crosshair,
+    },
+    {
+      index: '02',
+      href: '/game?mode=survival',
+      accent: 'v-accent-ember',
+      tagColor: 'text-ember',
+      tag: '10 WAVES // BOSS',
+      title: t('modeSurvival'),
+      desc: isUz
+        ? '10 bosqichli og‘ir to‘lqinlar, ikki Overlord boss va yadro ekstraktsiyasi.'
+        : 'Survive 10 escalating waves, defeat twin Overlord bosses, extract the core.',
+      meta: 'HIGH THREAT',
+      Icon: ShieldAlert,
+    },
+    {
+      index: '03',
+      href: '/game?mode=daily',
+      accent: 'v-accent-gold',
+      tagColor: 'text-gold',
+      tag: '1 RUN / 24H // 3X CR',
+      title: isUz ? 'KUNLIK SINOV' : 'DAILY HAZARD',
+      desc: isUz
+        ? 'Har kuni yangi kriptografik seed va qoidalar. Kuniga faqat bir urinish!'
+        : 'Synchronized daily cryptographic seed with shifting rules. One shot per 24h.',
+      meta: 'PRESTIGE BOUNTY',
+      Icon: Flame,
+    },
+    {
+      index: '04',
+      href: '/game?mode=biowar',
+      accent: 'v-accent-tide',
+      tagColor: 'text-tide',
+      tag: '30 ENTITIES // 20 TPS',
+      title: 'BIO-WAR 30',
+      desc: isUz
+        ? '30 ta entiti bir arenada. 20 TPS avtoritativ WebSocket server fizikasi.'
+        : '30-entity real-time slither + laser battle royale on a 20 TPS server.',
+      meta: 'ONLINE MULTIPLAYER',
+      Icon: Zap,
+    },
+  ]
+
+  const keycaps = [
+    { key: 'WASD', label: isUz ? 'HARAKAT' : 'STEER / MOVE' },
+    { key: 'LMB / ARROWS', label: isUz ? 'OTISH / ZARYAD' : 'FIRE / CHARGE' },
+    { key: 'SPACE', label: 'DASH' },
+    { key: 'E', label: isUz ? 'IMPULS ZARBA' : 'SHOCKWAVE' },
+    { key: 'Q', label: isUz ? 'KIBER QALQON' : 'PHASE SHIELD' },
+  ]
 
   return (
-    <div className="min-h-screen bg-[#040416] overflow-y-auto relative flex flex-col text-white selection:bg-purple-500/30 selection:text-white">
-      {/* Interactive 3D/Canvas Hologram Layer */}
-      <HubHologramCanvas />
-
-      {/* Cyberpunk Scanlines & Vignette */}
-      <div
-        className="absolute inset-0 z-0 pointer-events-none opacity-30"
-        style={{
-          backgroundImage: `linear-gradient(to right, rgba(176, 38, 255, 0.05) 1px, transparent 1px),
-                            linear-gradient(to bottom, rgba(176, 38, 255, 0.05) 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
-        }}
-      />
-      <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(4,4,22,0.85)_100%)]" />
-
-      {/* Main UI Layer */}
-      <div className="relative z-10 flex flex-col min-h-screen">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-ink text-bone v-dots">
+      <div className="relative z-10 flex min-h-screen flex-col">
         <Navbar />
 
-        <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-6xl mx-auto w-full">
+        {/* Live Telemetry Bar */}
+        <div className="border-b border-line bg-ink/85 px-4 py-2 sm:px-6">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 font-mono text-[10px] tracking-[0.2em] text-mute">
+            <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
+              <span className="v-live shrink-0" aria-hidden />
+              <span className="font-bold text-acid">PROTOCOL // 04:</span>
+              <span className="text-bone">
+                <ScrambleText text="BIOLUMEN NEO-MUTAGEN ARENA" />
+              </span>
+            </div>
+            <div className="hidden items-center gap-5 md:flex">
+              <span className="flex items-center gap-1.5 text-tide">
+                <Radio className="h-3 w-3" />
+                WS_20TPS
+              </span>
+              <span className="text-dim">|</span>
+              <span>ANTI-CHEAT: VERIFIED</span>
+              <span className="text-dim">|</span>
+              <span className="text-bone">BUILD 2.0</span>
+            </div>
+          </div>
+        </div>
 
-          {/* Hero Section */}
-          <div className="text-center space-y-6 max-w-3xl mx-auto pt-2">
+        {/* SECTION 01: EDITORIAL ASYMMETRIC HERO */}
+        <section className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:py-20">
+          <div className="grid grid-cols-1 items-end gap-10 lg:grid-cols-12">
+            {/* Left 8 Cols: Display Typography & CTAs */}
+            <div className="space-y-8 lg:col-span-8">
+              <Reveal>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="v-tag v-accent-acid">
+                    <span className="v-live" aria-hidden />
+                    <span>{isUz ? 'CELLIX 2.0 KIBER ARENA' : 'CELLIX 2.0 SPECIMEN ARENA'}</span>
+                  </span>
+                  <span className="v-label">PHASER 4 // AUTHORITATIVE ENGINE</span>
+                </div>
+              </Reveal>
 
-
-
-            {/* Glowing Holographic Title Header */}
-            <div className="flex flex-col items-center justify-center space-y-2 relative">
-
-              {/* Holographic Glowing Badge */}
-              <div className="relative flex items-center justify-center h-20 w-20 rounded-3xl bg-purple-950/80 border-2 border-purple-400/80 text-purple-300 shadow-[0_0_50px_rgba(176,38,255,0.5)] animate-virus-pulse">
-                <Hexagon className="h-10 w-10 text-purple-300 animate-pulse" />
-                <Sparkles className="h-4 w-4 text-blue-400 absolute top-2 right-2 animate-ping" />
-              </div>
-
-              <h1 className="text-7xl sm:text-8xl md:text-9xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-purple-300 via-violet-400 to-blue-400 text-glow-purple drop-shadow-[0_0_50px_rgba(176,38,255,0.6)]">
-                {t('brand')}
+              <h1 className="v-display text-[clamp(4.4rem,13vw,10.5rem)] leading-[0.84] tracking-tight">
+                <MaskText
+                  lines={[
+                    <span key="brand" className="v-glitch inline-block text-bone">
+                      {t('brand')}
+                    </span>,
+                    <span key="sub" className="v-stroke-acid inline-block">
+                      {isUz ? 'EVOLYUTSIYA.' : 'DOMINATE.'}
+                    </span>,
+                  ]}
+                  stagger={110}
+                />
               </h1>
+
+              <Reveal delay={180}>
+                <p className="max-w-xl font-sans text-sm leading-relaxed text-mute sm:text-base">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-acid">
+                    {t('tagline')} —{' '}
+                  </span>
+                  {t('hubDescription')}
+                </p>
+              </Reveal>
+
+              <Reveal delay={260}>
+                <div className="flex flex-wrap items-center gap-4 pt-2">
+                  <Link
+                    href="/game"
+                    onMouseEnter={handleHover}
+                    onClick={handleClick}
+                    className="v-btn"
+                  >
+                    <Play className="h-4 w-4 fill-current" />
+                    <span>{t('hubEnter')}</span>
+                    <ArrowUpRight className="v-arrow h-4 w-4" />
+                  </Link>
+
+                  <Link
+                    href="/skins"
+                    onMouseEnter={handleHover}
+                    onClick={handleClick}
+                    className="v-btn-ghost"
+                  >
+                    <ShoppingBag className="h-4 w-4 text-gold" />
+                    <span>{isUz ? 'KIBER ARMORY' : 'CYBER ARMORY'}</span>
+                    <ArrowUpRight className="v-arrow h-4 w-4" />
+                  </Link>
+                </div>
+              </Reveal>
+
+              {/* Hairline Telemetry Numbers */}
+              <Reveal delay={340}>
+                <div className="grid max-w-2xl grid-cols-3 border-t border-line pt-6">
+                  <div className="pr-4">
+                    <span className="v-label block">TICK RATE</span>
+                    <div className="v-display mt-1 text-3xl text-bone sm:text-4xl">
+                      <CountUp to={20} suffix=" TPS" />
+                    </div>
+                  </div>
+                  <div className="border-l border-line px-4">
+                    <span className="v-label block">ARENA CAP</span>
+                    <div className="v-display mt-1 text-3xl text-tide sm:text-4xl">
+                      <CountUp to={30} suffix=" MAX" />
+                    </div>
+                  </div>
+                  <div className="border-l border-line pl-4">
+                    <span className="v-label block">COMBAT MODES</span>
+                    <div className="v-display mt-1 text-3xl text-acid sm:text-4xl">
+                      <CountUp to={4} pad={2} />
+                    </div>
+                  </div>
+                </div>
+              </Reveal>
             </div>
 
-            {/* Tagline & Description */}
-            <div className="space-y-2">
-              <p className="text-lg sm:text-2xl font-mono font-extrabold tracking-[0.25em] text-white uppercase text-glow-purple">
-                {t('tagline')}
-              </p>
-              <p className="text-slate-400 text-xs sm:text-sm font-mono max-w-md mx-auto">
-                {t('subtitle')} — {t('hubDescription')}
-              </p>
-            </div>
+            {/* Right 4 Cols: Specimen Dossier & Daily Hazard Slab */}
+            <div className="lg:col-span-4">
+              <Reveal delay={280}>
+                <div className="v-panel v-accent-gold space-y-5 p-6 transition-transform duration-500 hover:-translate-y-1">
+                  <div className="flex items-center justify-between border-b border-line pb-3">
+                    <span className="v-label !text-gold">TODAY&apos;S MUTAGEN SEED</span>
+                    <span className="v-tag v-accent-gold animate-float">3X BOUNTY</span>
+                  </div>
 
-            {/* Quick Play CTA */}
-            <div className="pt-2">
-              <Link
-                href="/game"
-                onMouseEnter={handleHover}
-                className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl btn-cyber-primary text-slate-950 font-mono text-sm font-black uppercase tracking-wider shadow-[0_0_30px_rgba(176,38,255,0.5)] hover:scale-105 transition-transform"
-              >
-                <Play className="h-5 w-5 fill-current" />
-                <span>{t('hubEnter')}</span>
-              </Link>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-2xl transition-transform duration-300 hover:scale-125">{dailyMod.badge}</span>
+                      <h2 className="v-display text-2xl text-bone sm:text-3xl">
+                        {isUz ? dailyMod.nameUz : dailyMod.name}
+                      </h2>
+                    </div>
+                    <p className="font-mono text-xs leading-relaxed text-mute">
+                      {isUz ? dailyMod.descriptionUz : dailyMod.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-line pt-4">
+                    <span className="v-label">1 ATTEMPT / 24H</span>
+                    <Link
+                      href="/game?mode=daily"
+                      onMouseEnter={handleHover}
+                      onClick={handleClick}
+                      className="v-link inline-flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-widest text-gold"
+                    >
+                      <span>{isUz ? 'KIRISH' : 'DEPLOY'}</span>
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                </div>
+              </Reveal>
             </div>
           </div>
+        </section>
 
-          {/* Module Selection 3-Card Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto w-full pt-12">
-
-            {/* 1. Host Profile Dossier Module */}
-            <Link
-              href="/profile/me"
-              onMouseEnter={handleHover}
-              className="group glass-panel p-6 sm:p-8 rounded-3xl border border-purple-500/30 hover:border-purple-400 hover:-translate-y-2 transition-all duration-300 hover:shadow-[0_0_40px_rgba(176,38,255,0.3)] flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-3.5 rounded-2xl bg-purple-500/20 text-purple-400 group-hover:scale-110 transition-transform">
-                    <User className="h-7 w-7" />
-                  </div>
-                  <span className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">{t('dossierLabel')}</span>
-                </div>
-                <div className="space-y-1">
-                  <h2 className="text-xl font-mono font-bold text-white group-hover:text-purple-400 transition-colors">
-                    {t('navProfile')}
-                  </h2>
-                  <p className="text-xs font-mono text-slate-400 leading-relaxed">
-                    {t('cardProfileDesc')}
-                  </p>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1 text-xs font-mono text-purple-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                {t('viewProfileBtn')} <ArrowRight className="h-3.5 w-3.5" />
-              </span>
-            </Link>
-
-            {/* 2. Main Arena Dispatch Module */}
-            <Link
-              href="/game"
-              onMouseEnter={handleHover}
-              className="group glass-panel p-6 sm:p-8 rounded-3xl border border-blue-500/40 hover:border-blue-400 hover:-translate-y-2 transition-all duration-300 hover:shadow-[0_0_40px_rgba(59,130,246,0.3)] flex flex-col justify-between bg-blue-950/20"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-3.5 rounded-2xl bg-blue-500/20 text-blue-400 group-hover:scale-110 transition-transform">
-                    <Crosshair className="h-7 w-7 animate-pulse" />
-                  </div>
-                  <span className="text-[10px] font-mono tracking-widest text-blue-400 uppercase">{t('modesLabel')}</span>
-                </div>
-                <div className="space-y-1">
-                  <h2 className="text-xl font-mono font-bold text-white group-hover:text-blue-400 transition-colors">
-                    {t('navArena')}
-                  </h2>
-                  <p className="text-xs font-mono text-slate-400 leading-relaxed">
-                    {t('cardArenaDesc')}
-                  </p>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1 text-xs font-mono text-blue-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                {t('launchArenaBtn')} <ArrowRight className="h-3.5 w-3.5" />
-              </span>
-            </Link>
-
-            {/* 3. Global Leaderboard Rankings Module */}
-            <Link
-              href="/leaderboard"
-              onMouseEnter={handleHover}
-              className="group glass-panel p-6 sm:p-8 rounded-3xl border border-violet-500/30 hover:border-violet-400 hover:-translate-y-2 transition-all duration-300 hover:shadow-[0_0_40px_rgba(139,92,246,0.3)] flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-3.5 rounded-2xl bg-violet-500/20 text-violet-400 group-hover:scale-110 transition-transform">
-                    <Trophy className="h-7 w-7 text-amber-400" />
-                  </div>
-                  <span className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">{t('rankingsLabel')}</span>
-                </div>
-                <div className="space-y-1">
-                  <h2 className="text-xl font-mono font-bold text-white group-hover:text-violet-400 transition-colors">
-                    {t('navLeaderboard')}
-                  </h2>
-                  <p className="text-xs font-mono text-slate-400 leading-relaxed">
-                    {t('cardRankingsDesc')}
-                  </p>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1 text-xs font-mono text-violet-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                {t('viewRankingsBtn')} <ArrowRight className="h-3.5 w-3.5" />
-              </span>
-            </Link>
-
-            {/* 4. Cyber Armory Module */}
-            <Link
-              href="/skins"
-              onMouseEnter={handleHover}
-              className="group glass-panel p-6 sm:p-8 rounded-3xl border border-amber-500/30 hover:border-amber-400 hover:-translate-y-2 transition-all duration-300 hover:shadow-[0_0_40px_rgba(245,158,11,0.25)] flex flex-col justify-between bg-amber-950/10"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-3.5 rounded-2xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
-                    <ShoppingBag className="h-7 w-7" />
-                  </div>
-                  <span className="text-[10px] font-mono tracking-widest text-amber-400 uppercase">ARMORY</span>
-                </div>
-                <div className="space-y-1">
-                  <h2 className="text-xl font-mono font-bold text-white group-hover:text-amber-400 transition-colors">
-                    {t('navArmory')}
-                  </h2>
-                  <p className="text-xs font-mono text-slate-400 leading-relaxed">
-                    {t('cardArmoryDesc')}
-                  </p>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1 text-xs font-mono text-amber-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                {isUz ? 'BOZORNI OCHISH' : 'OPEN ARMORY'} <ArrowRight className="h-3.5 w-3.5" />
-              </span>
-            </Link>
-
+        {/* SECTION 02: KINETIC DUAL MARQUEE TICKER (Yellow/Acid Moving Tape) */}
+        <div className="relative z-10 border-y border-line">
+          <div className="v-tape-yellow py-3">
+            <Marquee className="v-display text-2xl tracking-wide sm:text-3xl">
+              <span className="px-6">CELLIX // 2.0</span>
+              <span className="px-6">•</span>
+              <span className="px-6">CLASSIC ENDLESS</span>
+              <span className="px-6">•</span>
+              <span className="px-6">10-WAVE SURVIVAL</span>
+              <span className="px-6">•</span>
+              <span className="px-6">DAILY BIO-HAZARD</span>
+              <span className="px-6">•</span>
+              <span className="px-6">BIO-WAR 30 MULTIPLAYER</span>
+              <span className="px-6">•</span>
+            </Marquee>
           </div>
-        </main>
+          <div className="bg-ink-2 py-2 font-mono text-[11px] uppercase tracking-[0.22em] text-mute">
+            <Marquee reverse>
+              <span className="px-8">SERVER-SIDE ANTI-CHEAT</span>
+              <span className="px-8">{'//'}</span>
+              <span className="px-8">20 TPS WEBSOCKET ENGINE</span>
+              <span className="px-8">{'//'}</span>
+              <span className="px-8">ZERO-TRUST SESSIONS</span>
+              <span className="px-8">{'//'}</span>
+              <span className="px-8 text-acid">3D ARENA SKINS</span>
+              <span className="px-8">{'//'}</span>
+            </Marquee>
+          </div>
+        </div>
 
-        {/* Social Links & Copyright Footer */}
-        <footer className="py-6 border-t border-purple-500/20 bg-[#040416]/90 backdrop-blur-md mt-auto">
-          <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* SECTION 03: TACTICAL BATTLE SECTORS (01-04) */}
+        <section className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
+          <Reveal>
+            <div className="mb-10 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
+              <div>
+                <span className="v-label block text-acid">
+                  01 // {isUz ? 'ARENA SEKTORLARI' : 'COMBAT DEPLOYMENT'}
+                </span>
+                <h2 className="v-display mt-2 text-4xl text-bone sm:text-6xl">
+                  <ScrambleText text={isUz ? 'JANG REJIMLARI' : 'BATTLE SECTORS'} />
+                </h2>
+              </div>
+              <span className="v-label">4 DEPLOYABLE PROTOCOLS</span>
+            </div>
+          </Reveal>
 
-            {/* Social Icons */}
-            <div className="flex items-center gap-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {sectors.map((s, idx) => {
+              const Icon = s.Icon
+              return (
+                <Reveal key={s.index} delay={idx * 90}>
+                  <Link
+                    href={s.href}
+                    onMouseEnter={handleHover}
+                    onClick={handleClick}
+                    className={`v-card ${s.accent} group flex min-h-[320px] flex-col justify-between p-6`}
+                  >
+                    <div className="space-y-5">
+                      <div className="flex items-start justify-between">
+                        <span className="v-display text-5xl text-dim transition-colors group-hover:text-bone">
+                          {s.index}
+                        </span>
+                        <div className={`v-chamfer-sm border border-line bg-ink p-2.5 transition-transform duration-300 group-hover:scale-110 group-hover:border-line-strong ${s.tagColor}`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className={`v-tag ${s.accent}`}>{s.tag}</span>
+                        <h3 className="v-display pt-1 text-3xl text-bone transition-colors group-hover:text-acid">
+                          {s.title}
+                        </h3>
+                        <p className="font-sans text-xs leading-relaxed text-mute">{s.desc}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex items-center justify-between border-t border-line pt-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em]">
+                      <span className="text-dim">{s.meta}</span>
+                      <span className={`inline-flex items-center gap-1 ${s.tagColor}`}>
+                        <span>{isUz ? 'BOSHLASH' : 'DEPLOY'}</span>
+                        <ArrowUpRight className="v-arrow h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5" />
+                      </span>
+                    </div>
+                  </Link>
+                </Reveal>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* SECTION 04: DOSSIER, LADDER & KEYCAPS */}
+        <section className="mx-auto w-full max-w-7xl px-4 pb-20 sm:px-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Left 7 Cols: Dossier & Hall of Fame */}
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:col-span-7">
+              <Reveal>
+                <Link
+                  href="/profile/me"
+                  onMouseEnter={handleHover}
+                  onClick={handleClick}
+                  className="v-card v-accent-tide group flex h-full flex-col justify-between p-6"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="v-label !text-tide">{t('dossierLabel')}</span>
+                      <User className="h-5 w-5 text-tide" />
+                    </div>
+                    <h3 className="v-display text-3xl text-bone">{t('navProfile')}</h3>
+                    <p className="font-sans text-xs leading-relaxed text-mute">
+                      {t('cardProfileDesc')}
+                    </p>
+                  </div>
+                  <div className="mt-6 flex items-center justify-between border-t border-line pt-3 font-mono text-[10px] font-bold uppercase tracking-widest text-tide">
+                    <span>{t('viewProfileBtn')}</span>
+                    <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-0.5" />
+                  </div>
+                </Link>
+              </Reveal>
+
+              <Reveal delay={100}>
+                <Link
+                  href="/leaderboard"
+                  onMouseEnter={handleHover}
+                  onClick={handleClick}
+                  className="v-card v-accent-gold group flex h-full flex-col justify-between p-6"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="v-label !text-gold">{t('rankingsLabel')}</span>
+                      <Crown className="h-5 w-5 text-gold" />
+                    </div>
+                    <h3 className="v-display text-3xl text-bone">{t('navLeaderboard')}</h3>
+                    <p className="font-sans text-xs leading-relaxed text-mute">
+                      {t('cardRankingsDesc')}
+                    </p>
+                  </div>
+                  <div className="mt-6 flex items-center justify-between border-t border-line pt-3 font-mono text-[10px] font-bold uppercase tracking-widest text-gold">
+                    <span>{t('viewRankingsBtn')}</span>
+                    <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-0.5" />
+                  </div>
+                </Link>
+              </Reveal>
+            </div>
+
+            {/* Right 5 Cols: Combat Keycaps Telemetry Slab */}
+            <Reveal delay={180} className="lg:col-span-5">
+              <div className="v-panel v-accent-acid flex h-full flex-col justify-between p-6">
+                <div className="mb-4 flex items-center justify-between border-b border-line pb-3">
+                  <span className="v-label flex items-center gap-2 text-acid">
+                    <Keyboard className="h-3.5 w-3.5" />
+                    {t('controlsTitle')}
+                  </span>
+                  <Link
+                    href="/settings"
+                    onMouseEnter={handleHover}
+                    onClick={handleClick}
+                    className="v-label inline-flex items-center gap-1 text-tide transition-colors hover:text-acid"
+                  >
+                    <span>{isUz ? 'SOZLAMALAR' : 'SETTINGS'}</span>
+                    <ArrowUpRight className="h-3 w-3" />
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {keycaps.map((k) => (
+                    <div
+                      key={k.key}
+                      className="flex items-center justify-between border border-line bg-ink px-3 py-2 font-mono text-[11px] transition-all duration-200 hover:-translate-y-0.5 hover:border-acid/60"
+                    >
+                      <span className="v-chamfer-sm bg-ink-3 px-2 py-0.5 font-bold text-acid">
+                        {k.key}
+                      </span>
+                      <span className="text-mute">{k.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* EDITORIAL FOOTER */}
+        <footer className="mt-auto border-t border-line bg-ink-2 py-6">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6">
+            <div className="flex items-center gap-5 font-mono text-xs">
               <a
                 href="https://instagram.com/iflxczz"
                 target="_blank"
                 rel="noopener noreferrer"
                 onMouseEnter={handleHover}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl glass-panel border border-slate-700 hover:border-purple-400 hover:bg-purple-500/10 text-slate-400 hover:text-purple-300 transition-all group"
+                className="v-link inline-flex items-center gap-2 text-mute transition-colors hover:text-acid"
               >
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current group-hover:scale-110 transition-transform">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
-                </svg>
-                <span className="font-mono text-xs font-bold">@iflxczz</span>
+                <span>INSTAGRAM // @iflxczz</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
-
+              <span className="text-dim">/</span>
               <a
                 href="https://tiktok.com/@iflxczz"
                 target="_blank"
                 rel="noopener noreferrer"
                 onMouseEnter={handleHover}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl glass-panel border border-slate-700 hover:border-purple-400 hover:bg-purple-500/10 text-slate-400 hover:text-purple-300 transition-all group"
+                className="v-link inline-flex items-center gap-2 text-mute transition-colors hover:text-acid"
               >
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current group-hover:scale-110 transition-transform">
-                  <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93v7.2c0 1.96-.5 3.96-1.72 5.39-1.21 1.46-3.08 2.29-4.98 2.32-1.92.03-3.88-.5-5.32-1.84-1.39-1.33-2.12-3.31-1.95-5.26.17-1.92 1.25-3.66 2.84-4.66 1.44-.91 3.23-1.16 4.84-.74v4.22c-1.12-.26-2.42-.03-3.23.8-.75.82-.94 2-.62 3.08.33 1.11 1.34 1.9 2.5 2.06 1.17.15 2.45-.19 3.28-1.02.82-.82 1.21-2 1.19-3.16V0h-1.22z" />
-                </svg>
-                <span className="font-mono text-xs font-bold">@iflxczz</span>
+                <span>TIKTOK // @iflxczz</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
             </div>
 
-            {/* Copyright & Year */}
-            <div className="text-slate-400 font-mono text-xs flex items-center gap-1.5">
-              <span>CELLIX Arena &copy; {currentYear}</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-purple-300 font-semibold">{t('createdBy')}</span>
+            <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-mute">
+              <span>CELLIX &copy; {currentYear}</span>
+              <span className="text-dim">{'//'}</span>
+              <span className="text-bone">{t('createdBy')}</span>
+              <span className="text-dim">{'//'}</span>
+              <span className="text-acid">CELLIX 2.0</span>
             </div>
-
           </div>
         </footer>
       </div>

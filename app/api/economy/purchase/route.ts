@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { CELL_SKINS, type CellSkinId } from '@/lib/game/cosmetics'
 import { prisma } from '@/lib/prisma'
 import { getAuthenticatedPlayer } from '@/lib/auth'
+import { enforceLayeredRateLimit } from '@/lib/ratelimit'
 
 function isCellSkinId(value: unknown): value is CellSkinId {
   return typeof value === 'string' && CELL_SKINS.some((skin) => skin.id === value)
@@ -22,6 +23,19 @@ export async function POST(req: Request) {
     const authenticatedPlayer = await getAuthenticatedPlayer()
     if (!authenticatedPlayer) {
       return NextResponse.json({ error: 'Authentication required to purchase skins.' }, { status: 401 })
+    }
+
+    const rateCheck = await enforceLayeredRateLimit(req, {
+      scope: 'purchase',
+      playerId: authenticatedPlayer.id,
+      maxRequests: 10,
+      windowMs: 60000,
+    })
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many purchase requests. Please wait.' },
+        { status: 429, headers: rateCheck.headers }
+      )
     }
 
     const body = (await req.json()) as unknown

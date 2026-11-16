@@ -38,6 +38,9 @@ model RunSession {
   status        String    @default("active")
   finishedAt    DateTime?
   playerId      String?
+  seed          String?
+  constraints   String?
+  runVersion    Int       @default(1)
   player        Player?   @relation(fields: [playerId], references: [id], onDelete: SetNull)
   gameRun       GameRun?
 
@@ -46,27 +49,30 @@ model RunSession {
 }
 
 model GameRun {
-  id            String      @id @default(cuid())
-  runSessionId  String      @unique
-  runSession    RunSession  @relation(fields: [runSessionId], references: [id], onDelete: Cascade)
-  playerId      String
-  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  score         Int
-  level         Int
-  kills         Int         @default(0)
-  survivalTime Int         @default(0)
-  gameMode      String
-  wave          Int         @default(0)
-  damageDealt   Int         @default(0)
-  damageTaken   Int         @default(0)
-  criticalHits  Int         @default(0)
-  bossDefeated  Boolean     @default(false)
-  mutations    String      @default("[]")
-  challengeDate String?
-  createdAt     DateTime    @default(now())
+  id               String      @id @default(cuid())
+  runSessionId     String      @unique
+  runSession       RunSession  @relation(fields: [runSessionId], references: [id], onDelete: Cascade)
+  playerId         String
+  player           Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  score            Int
+  level            Int
+  kills            Int         @default(0)
+  survivalTime     Int         @default(0)
+  gameMode         String
+  wave             Int         @default(0)
+  damageDealt      Int         @default(0)
+  damageTaken      Int         @default(0)
+  criticalHits     Int         @default(0)
+  bossDefeated     Boolean     @default(false)
+  mutations        String      @default("[]")
+  challengeDate    String?
+  validationStatus String      @default("valid") // valid, suspicious, rejected
+  validationFlag   String?
+  createdAt        DateTime    @default(now())
 
   @@index([playerId, createdAt])
   @@index([gameMode, challengeDate, score])
+  @@index([validationStatus])
 }
 
 model DailyResult {
@@ -100,6 +106,8 @@ model RateLimitBucket {
   count     Int      @default(0)
   resetAt   DateTime
   updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
 }
 
 model GameSession {
@@ -121,6 +129,9 @@ model GameSession {
   createdAt    DateTime @default(now())
 
   @@index([playerId, createdAt])
+  @@index([playerId, gameMode])
+  @@index([playerId, score(sort: Desc)])
+  @@index([playerId, bossDefeated])
 }
 
 model HighScore {

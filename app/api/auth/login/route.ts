@@ -1,9 +1,22 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPassword, createSession } from '@/lib/auth'
+import { enforceLayeredRateLimit } from '@/lib/ratelimit'
 
 export async function POST(req: Request) {
   try {
+    const rateCheck = await enforceLayeredRateLimit(req, {
+      scope: 'auth_login',
+      maxRequests: 5,
+      windowMs: 60000,
+    })
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many login attempts. Please try again later.' },
+        { status: 429, headers: rateCheck.headers }
+      )
+    }
+
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const emailOrUsername = typeof body.email === 'string' ? body.email.trim() : ''
     const password = typeof body.password === 'string' ? body.password : ''
