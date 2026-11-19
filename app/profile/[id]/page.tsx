@@ -30,6 +30,7 @@ import {
   purchaseSkin,
   type CellSkinId,
 } from '@/lib/game/cosmetics'
+import { clearPlayerSession, syncPlayerSession } from '@/lib/game/playerSession'
 import PixelCharacterAvatar from '@/components/PixelCharacterAvatar'
 import confetti from 'canvas-confetti'
 import { Reveal, MaskText } from '@/components/v26/Reveal'
@@ -114,8 +115,15 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           const profileIsOwner = data.isOwner ?? false
           setIsOwner(profileIsOwner)
 
-          if (profileIsOwner && typeof data.player.coins === 'number') {
-            syncCoinBalance(data.player.coins)
+          if (profileIsOwner) {
+            if (typeof data.player.coins === 'number') {
+              syncCoinBalance(data.player.coins)
+            }
+            syncPlayerSession({
+              id: data.player.id,
+              username: data.player.username,
+              avatarColor: data.player.avatarColor,
+            })
           }
 
           if (data.player.ownedSkins) {
@@ -157,6 +165,13 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       if (res.ok) {
         const data = await res.json()
         setProfileData((prev) => (prev ? { ...prev, player: { ...prev.player, ...data.player } } : prev))
+        if (data?.player) {
+          syncPlayerSession({
+            id: data.player.id,
+            username: data.player.username,
+            avatarColor: data.player.avatarColor,
+          })
+        }
         setEditing(false)
       }
     } catch {
@@ -229,6 +244,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     } catch {
       // ignore
     }
+    clearPlayerSession()
     window.location.href = '/'
   }
 

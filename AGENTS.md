@@ -7,3 +7,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Project Memory (Token & Speed Optimization)
+Before scanning files across the repository, read [CELLIX_MEMORY.md](./CELLIX_MEMORY.md) first for the architecture map, UI/theme conventions, gameplay modules, security rules, and verification commands. Keep `CELLIX_MEMORY.md` updated concisely after significant changes.

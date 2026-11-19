@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar'
 import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff, ArrowLeft, Crosshair } from 'lucide-react'
 import { useLanguage } from '@/components/LanguageContext'
 import { soundManager } from '@/lib/game/engine/SoundManager'
+import { syncPlayerSession } from '@/lib/game/playerSession'
 import ScrambleText from '@/components/v26/ScrambleText'
 import CellixLoader from '@/components/v26/CellixLoader'
 
@@ -51,6 +52,9 @@ export default function AuthPage() {
         throw new Error(data.error || (isUz ? 'Xatolik yuz berdi' : 'An error occurred'))
       }
 
+      if (data.player) {
+        syncPlayerSession(data.player)
+      }
       soundManager.playLevelUp()
       if (data.player?.id) {
         router.push(`/profile/${data.player.id}`)
